@@ -129,7 +129,7 @@ function WatchedCard({
           <Text numberOfLines={2} style={styles.reviewTitle}>{review.title}</Text>
           <RatingStars rating={review.rating} />
           <Text numberOfLines={5} style={review.comment ? styles.reviewText : styles.emptyReviewText}>
-            {review.comment || 'La puntuaste sin escribir una reseña.'}
+            {review.comment || 'Escribí tu reseña.'}
           </Text>
         </View>
       </View>
