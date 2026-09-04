@@ -4,7 +4,7 @@ import { ActivityIndicator, StyleSheet, View } from 'react-native';
 
 import { isAuthError } from '../api/errors';
 import { fetchOnboardingStatus } from '../api/onboarding';
-import { clearSession, getToken } from '../auth/session';
+import { clearSession, getRefreshToken, getToken } from '../auth/session';
 
 type Destination = '/(auth)/login' | '/onboarding' | '/(app)';
 
@@ -16,8 +16,8 @@ export default function Index() {
 
     const readSession = async () => {
       try {
-        const token = await getToken();
-        if (!token) {
+        const [token, refreshToken] = await Promise.all([getToken(), getRefreshToken()]);
+        if (!token && !refreshToken) {
           if (mounted) setDestination('/(auth)/login');
           return;
         }

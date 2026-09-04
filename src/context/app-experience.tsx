@@ -17,37 +17,44 @@ import {
 } from '../api/movies';
 import { getAccountStorageKey, getProfileName } from '../auth/session';
 import { fetchUserProfile } from '../api/profile';
-import { fetchMyReviews } from '../api/reviews';
-import { loadProfileReviews, saveProfileReview } from '../profile/review-storage';
+import { deleteReview, fetchMyReviews } from '../api/reviews';
+import {
+  deleteProfileReview,
+  loadProfileReviews,
+  saveProfileReview,
+} from '../profile/review-storage';
 import type { Movie } from '../types/movie';
 import type { ProfileReview } from '../types/profile';
 
 interface AppExperienceValue {
   favoriteIds: ReadonlySet<number>;
   favoriteMovies: FavoriteMovie[];
-  muted: boolean;
   recordReview: (review: ProfileReview) => Promise<void>;
+  unmarkAsWatched: (tmdbId: number) => Promise<void>;
   reviewedIds: ReadonlySet<number>;
   reviews: ProfileReview[];
-  toggleMuted: () => void;
   toggleFavorite: (movie: Movie) => Promise<boolean>;
   username: string;
   loadRecommendations: () => Promise<Movie[]>;
+  recommendationsVersion: number;
+  refreshRecommendations: () => void;
 }
 
 const AppExperienceContext = createContext<AppExperienceValue | null>(null);
 
 export function AppExperienceProvider({ children }: PropsWithChildren) {
-  const [muted, setMuted] = useState(true);
   const [favoriteIds, setFavoriteIds] = useState<Set<number>>(new Set());
   const [favoriteMovies, setFavoriteMovies] = useState<FavoriteMovie[]>([]);
   const [reviews, setReviews] = useState<ProfileReview[]>([]);
   const [username, setUsername] = useState('Cinéfilo');
+  const [recommendationsVersion, setRecommendationsVersion] = useState(0);
   const favoriteIdsRef = useRef<Set<number>>(new Set());
   const favoriteMoviesRef = useRef<FavoriteMovie[]>([]);
+  const reviewedIdsRef = useRef<Set<number>>(new Set());
   const reviewAccountRef = useRef('current_user');
   const recommendationsRef = useRef<Movie[]>([]);
   const pendingRequestRef = useRef<Promise<Movie[]> | null>(null);
+  const recommendationRevisionRef = useRef(0);
 
   useEffect(() => {
     let mounted = true;
@@ -90,10 +97,12 @@ export function AppExperienceProvider({ children }: PropsWithChildren) {
       .then(([serverReviews, localReviews]) => {
         if (mounted) {
           const serverIds = new Set(serverReviews.map((review) => review.tmdbId));
-          setReviews([
+          const mergedReviews = [
             ...serverReviews,
             ...localReviews.filter((review) => !serverIds.has(review.tmdbId)),
-          ]);
+          ];
+          reviewedIdsRef.current = new Set(mergedReviews.map((review) => review.tmdbId));
+          setReviews(mergedReviews);
         }
       })
       .catch((error) => {
@@ -114,18 +123,30 @@ export function AppExperienceProvider({ children }: PropsWithChildren) {
       return pendingRequestRef.current;
     }
 
+    const requestRevision = recommendationRevisionRef.current;
     const request = fetchMovies('/api/peliculas/recomendadas')
       .then((movies) => {
         const recommendations = movies.slice(0, 10);
-        recommendationsRef.current = recommendations;
+        if (requestRevision === recommendationRevisionRef.current) {
+          recommendationsRef.current = recommendations;
+        }
         return recommendations;
       })
       .finally(() => {
-        pendingRequestRef.current = null;
+        if (pendingRequestRef.current === request) {
+          pendingRequestRef.current = null;
+        }
       });
 
     pendingRequestRef.current = request;
     return request;
+  }, []);
+
+  const refreshRecommendations = useCallback(() => {
+    recommendationRevisionRef.current += 1;
+    recommendationsRef.current = [];
+    pendingRequestRef.current = null;
+    setRecommendationsVersion((current) => current + 1);
   }, []);
 
   const toggleFavorite = useCallback(async (movie: Movie) => {
@@ -162,17 +183,40 @@ export function AppExperienceProvider({ children }: PropsWithChildren) {
   }, []);
 
   const recordReview = useCallback(async (review: ProfileReview) => {
+    const nextReviewedIds = new Set(reviewedIdsRef.current);
+    nextReviewedIds.add(review.tmdbId);
+    reviewedIdsRef.current = nextReviewedIds;
     setReviews((current) => [
       review,
       ...current.filter((item) => item.tmdbId !== review.tmdbId),
     ]);
+
+    const exhaustedCurrentBatch = recommendationsRef.current.length > 0
+      && recommendationsRef.current.every((movie) => nextReviewedIds.has(movie.id));
+    if (exhaustedCurrentBatch) {
+      refreshRecommendations();
+    }
 
     try {
       await saveProfileReview(reviewAccountRef.current, review);
     } catch (error) {
       console.warn('La reseña se publicó, pero no pudo guardarse en el perfil local', error);
     }
-  }, []);
+  }, [refreshRecommendations]);
+
+  const unmarkAsWatched = useCallback(async (tmdbId: number) => {
+    await deleteReview(tmdbId);
+    const nextReviewedIds = new Set(reviewedIdsRef.current);
+    nextReviewedIds.delete(tmdbId);
+    reviewedIdsRef.current = nextReviewedIds;
+    setReviews((current) => current.filter((review) => review.tmdbId !== tmdbId));
+    try {
+      await deleteProfileReview(reviewAccountRef.current, tmdbId);
+    } catch (error) {
+      console.warn('La película se quitó del perfil, pero falló la copia local', error);
+    }
+    refreshRecommendations();
+  }, [refreshRecommendations]);
 
   const reviewedIds = new Set(reviews.map((review) => review.tmdbId));
 
@@ -182,12 +226,13 @@ export function AppExperienceProvider({ children }: PropsWithChildren) {
         favoriteIds,
         favoriteMovies,
         loadRecommendations,
-        muted,
         recordReview,
+        recommendationsVersion,
+        refreshRecommendations,
         reviewedIds,
         reviews,
         toggleFavorite,
-        toggleMuted: () => setMuted((current) => !current),
+        unmarkAsWatched,
         username,
       }}
     >

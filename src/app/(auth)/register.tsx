@@ -68,6 +68,7 @@ export default function RegisterScreen() {
           token,
           response.data.username || normalizedUsername,
           normalizedEmail,
+          response.data.refreshToken,
         );
         router.replace('/onboarding');
       } else {

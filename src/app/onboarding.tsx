@@ -19,7 +19,9 @@ import {
   fetchPlatforms,
   saveOnboarding,
 } from '../api/onboarding';
-import { describeApiError } from '../api/errors';
+import { describeApiError, isAuthError } from '../api/errors';
+import { logoutFromServer } from '../api/profile';
+import { clearSession } from '../auth/session';
 
 function toggleSelection(current: Set<number>, id: number): Set<number> {
   const next = new Set(current);
@@ -69,7 +71,9 @@ export default function OnboardingScreen() {
   const [selectedGenres, setSelectedGenres] = useState<Set<number>>(new Set());
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [showWelcome, setShowWelcome] = useState(false);
 
   const loadData = async () => {
     setLoading(true);
@@ -85,6 +89,11 @@ export default function OnboardingScreen() {
       setSelectedPlatforms(new Set(status.plataformaIds ?? []));
       setSelectedGenres(new Set(status.generoIds ?? []));
     } catch (error) {
+      if (isAuthError(error)) {
+        await clearSession();
+        router.replace('/(auth)/login');
+        return;
+      }
       setLoadError(describeApiError(error).message);
     } finally {
       setLoading(false);
@@ -94,6 +103,36 @@ export default function OnboardingScreen() {
   useEffect(() => {
     void loadData();
   }, []);
+
+  const handleLogout = async () => {
+    if (loggingOut) {
+      return;
+    }
+
+    setLoggingOut(true);
+    try {
+      try {
+        await logoutFromServer();
+      } catch {
+        // Salir del teléfono debe funcionar aunque el servidor esté caído.
+      }
+      await clearSession();
+      router.replace('/(auth)/login');
+    } finally {
+      setLoggingOut(false);
+    }
+  };
+
+  const confirmLogout = () => {
+    Alert.alert('Cerrar sesión', '¿Querés salir de MiCineYa?', [
+      { text: 'Cancelar', style: 'cancel' },
+      {
+        text: 'Cerrar sesión',
+        style: 'destructive',
+        onPress: () => void handleLogout(),
+      },
+    ]);
+  };
 
   const handleContinue = async () => {
     if (selectedPlatforms.size === 0) {
@@ -108,14 +147,79 @@ export default function OnboardingScreen() {
     setSaving(true);
     try {
       await saveOnboarding([...selectedPlatforms], [...selectedGenres]);
-      router.replace('/(app)');
+      setShowWelcome(true);
     } catch (error) {
       const failure = describeApiError(error);
+      if (failure.requiresLogin) {
+        await clearSession();
+        router.replace('/(auth)/login');
+        return;
+      }
       Alert.alert(failure.title, failure.message);
     } finally {
       setSaving(false);
     }
   };
+
+  if (showWelcome) {
+    return (
+      <SafeAreaView style={styles.welcomeSafeArea}>
+        <View style={styles.welcomeContent}>
+          <Pressable
+            accessibilityRole="button"
+            disabled={loggingOut}
+            onPress={confirmLogout}
+            style={({ pressed }) => [
+              styles.welcomeLogoutButton,
+              pressed && styles.buttonPressed,
+            ]}
+          >
+            {loggingOut ? (
+              <ActivityIndicator color="#ff9ba0" size="small" />
+            ) : (
+              <Ionicons color="#ff9ba0" name="log-out-outline" size={17} />
+            )}
+            <Text style={styles.logoutText}>{loggingOut ? 'Saliendo...' : 'Cerrar sesión'}</Text>
+          </Pressable>
+
+          <View style={styles.welcomeIconShell}>
+            <Ionicons color="#fff" name="sparkles" size={42} />
+          </View>
+
+          <Text style={styles.welcomeEyebrow}>TODO LISTO</Text>
+          <Text style={styles.welcomeTitle}>Dejá de dar vueltas y disfrutá</Text>
+          <Text style={styles.welcomeMessage}>
+            En base a tus plataformas y gustos, te recomendamos solo 10 pelis. Si no sabés cuál
+            elegir, la ruleta decide por vos.
+          </Text>
+
+          <View style={styles.welcomeActions}>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => router.replace('/(app)')}
+              style={({ pressed }) => [styles.primaryButton, pressed && styles.buttonPressed]}
+            >
+              <Text style={styles.primaryButtonText}>Ver mis 10 pelis</Text>
+              <Ionicons color="#fff" name="arrow-forward" size={20} />
+            </Pressable>
+
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => router.replace('/(app)/roulette')}
+              style={({ pressed }) => [styles.rouletteButton, pressed && styles.buttonPressed]}
+            >
+              <Ionicons color="#ff8f94" name="shuffle" size={20} />
+              <Text style={styles.rouletteButtonText}>Probar la ruleta</Text>
+            </Pressable>
+          </View>
+
+          <Text style={styles.welcomeHint}>
+            Podés cambiar tus preferencias cuando quieras desde Mi perfil.
+          </Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   if (loading) {
     return (
@@ -135,6 +239,10 @@ export default function OnboardingScreen() {
         <Pressable onPress={() => void loadData()} style={styles.primaryButton}>
           <Text style={styles.primaryButtonText}>Reintentar</Text>
         </Pressable>
+        <Pressable disabled={loggingOut} onPress={confirmLogout} style={styles.errorLogoutButton}>
+          <Ionicons color="#b99ca1" name="log-out-outline" size={17} />
+          <Text style={styles.errorLogoutText}>Cerrar sesión</Text>
+        </Pressable>
       </View>
     );
   }
@@ -142,6 +250,23 @@ export default function OnboardingScreen() {
   return (
     <SafeAreaView style={styles.safeArea}>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        <View style={styles.topRow}>
+          <Text style={styles.topBrand}>MICINEYA</Text>
+          <Pressable
+            accessibilityRole="button"
+            disabled={loggingOut}
+            onPress={confirmLogout}
+            style={({ pressed }) => [styles.logoutButton, pressed && styles.buttonPressed]}
+          >
+            {loggingOut ? (
+              <ActivityIndicator color="#ff9ba0" size="small" />
+            ) : (
+              <Ionicons color="#ff9ba0" name="log-out-outline" size={17} />
+            )}
+            <Text style={styles.logoutText}>{loggingOut ? 'Saliendo...' : 'Cerrar sesión'}</Text>
+          </Pressable>
+        </View>
+
         <View style={styles.hero}>
           <Text style={styles.eyebrow}>PERSONALIZÁ MICINEYA</Text>
           <Text style={styles.title}>Encontrá algo para ver sin dar vueltas</Text>
@@ -205,7 +330,109 @@ export default function OnboardingScreen() {
 
 const styles = StyleSheet.create({
   safeArea: { backgroundColor: '#050505', flex: 1 },
+  welcomeSafeArea: { backgroundColor: '#080608', flex: 1 },
+  welcomeContent: {
+    alignItems: 'center',
+    flex: 1,
+    justifyContent: 'center',
+    paddingHorizontal: 28,
+  },
+  welcomeLogoutButton: {
+    alignItems: 'center',
+    borderColor: '#49363b',
+    borderRadius: 15,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 7,
+    minHeight: 38,
+    paddingHorizontal: 12,
+    position: 'absolute',
+    right: 22,
+    top: 18,
+  },
+  welcomeIconShell: {
+    alignItems: 'center',
+    backgroundColor: '#b41622',
+    borderColor: '#ff6269',
+    borderRadius: 43,
+    borderWidth: 1,
+    height: 86,
+    justifyContent: 'center',
+    shadowColor: '#e50914',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.34,
+    shadowRadius: 22,
+    width: 86,
+  },
+  welcomeEyebrow: {
+    color: '#ff7379',
+    fontSize: 11,
+    fontWeight: '900',
+    letterSpacing: 2.4,
+    marginTop: 28,
+  },
+  welcomeTitle: {
+    color: '#fff',
+    fontSize: 34,
+    fontWeight: '900',
+    letterSpacing: -1,
+    lineHeight: 39,
+    marginTop: 10,
+    maxWidth: 360,
+    textAlign: 'center',
+  },
+  welcomeMessage: {
+    color: '#aaa0a3',
+    fontSize: 16,
+    lineHeight: 24,
+    marginTop: 16,
+    maxWidth: 360,
+    textAlign: 'center',
+  },
+  welcomeActions: { gap: 12, marginTop: 34, width: '100%' },
+  rouletteButton: {
+    alignItems: 'center',
+    borderColor: '#49363b',
+    borderRadius: 16,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 9,
+    justifyContent: 'center',
+    minHeight: 54,
+    paddingHorizontal: 20,
+  },
+  rouletteButtonText: { color: '#fff', fontSize: 15, fontWeight: '800' },
+  buttonPressed: { opacity: 0.72, transform: [{ scale: 0.98 }] },
+  welcomeHint: {
+    color: '#6f686a',
+    fontSize: 12,
+    lineHeight: 18,
+    marginTop: 24,
+    textAlign: 'center',
+  },
   content: { gap: 30, paddingBottom: 44, paddingHorizontal: 22, paddingTop: 22 },
+  topRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  topBrand: {
+    color: '#777073',
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 2.2,
+  },
+  logoutButton: {
+    alignItems: 'center',
+    borderColor: '#49363b',
+    borderRadius: 15,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 7,
+    minHeight: 38,
+    paddingHorizontal: 12,
+  },
+  logoutText: { color: '#ff9ba0', fontSize: 11, fontWeight: '900' },
   hero: { gap: 12 },
   eyebrow: { color: '#e50914', fontSize: 12, fontWeight: '900', letterSpacing: 1.8 },
   title: { color: '#fff', fontSize: 34, fontWeight: '900', letterSpacing: -1.1, lineHeight: 39 },
@@ -266,4 +493,12 @@ const styles = StyleSheet.create({
   loadingText: { color: '#aaa', fontSize: 14 },
   errorTitle: { color: '#fff', fontSize: 21, fontWeight: '900', textAlign: 'center' },
   errorMessage: { color: '#999', fontSize: 14, lineHeight: 21, textAlign: 'center' },
+  errorLogoutButton: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 7,
+    marginTop: 4,
+    padding: 10,
+  },
+  errorLogoutText: { color: '#b99ca1', fontSize: 13, fontWeight: '800' },
 });

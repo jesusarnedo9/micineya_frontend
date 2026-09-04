@@ -1,17 +1,14 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
+  ActivityIndicator,
   Image,
-  Platform,
   Pressable,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
-import YoutubePlayer, {
-  PLAYER_STATES,
-  YoutubeIframeRef,
-} from 'react-native-youtube-iframe';
+import YoutubePlayer, { PLAYER_STATES } from 'react-native-youtube-iframe';
 
 import type { Movie } from '../../types/movie';
 
@@ -21,11 +18,9 @@ interface MovieReelProps {
   mountVideo: boolean;
   width: number;
   height: number;
-  muted: boolean;
   label: string;
   saved?: boolean;
   reviewed?: boolean;
-  onToggleMuted: () => void;
   onSave?: (movie: Movie) => void;
   onReview?: (movie: Movie) => void;
 }
@@ -36,117 +31,76 @@ export function MovieReel({
   mountVideo,
   width,
   height,
-  muted,
   label,
   saved = false,
   reviewed = false,
-  onToggleMuted,
   onSave,
   onReview,
 }: MovieReelProps) {
-  const playerRef = useRef<YoutubeIframeRef | null>(null);
-  const [paused, setPaused] = useState(false);
   const [playerError, setPlayerError] = useState(false);
   const [playerReady, setPlayerReady] = useState(false);
-  const [playerStarted, setPlayerStarted] = useState(false);
-  const [playRequested, setPlayRequested] = useState(false);
+  const [playing, setPlaying] = useState(false);
+  const [minimumPosterElapsed, setMinimumPosterElapsed] = useState(false);
 
   const hasVideo = Boolean(movie.videoKey) && !playerError;
   const playerHeight = Math.max(200, Math.min(width * (9 / 16), height * 0.46));
-  const playerTop = (height - playerHeight) / 2;
 
   useEffect(() => {
-    if (!active) {
-      setPaused(false);
-      setPlayRequested(false);
-    } else if (playerReady) {
-      setPlayRequested(true);
-    }
-  }, [active, playerReady]);
+    setPlaying(active && playerReady && minimumPosterElapsed);
+  }, [active, minimumPosterElapsed, playerReady]);
 
   useEffect(() => {
     setPlayerError(false);
     setPlayerReady(false);
-    setPlayerStarted(false);
-    setPlayRequested(false);
-    setPaused(false);
+    setPlaying(false);
   }, [movie.id]);
+
+  useEffect(() => {
+    setMinimumPosterElapsed(false);
+    if (!mountVideo || !movie.videoKey) {
+      return;
+    }
+
+    const timer = setTimeout(() => setMinimumPosterElapsed(true), 1000);
+    return () => clearTimeout(timer);
+  }, [mountVideo, movie.id, movie.videoKey]);
 
   useEffect(() => {
     if (!mountVideo) {
       setPlayerReady(false);
-      setPlayerStarted(false);
-      setPlayRequested(false);
+      setPlaying(false);
     }
   }, [mountVideo]);
 
   const handlePlayerState = (state: PLAYER_STATES) => {
     if (state === PLAYER_STATES.PLAYING) {
-      setPlayerStarted(true);
-      setPaused(false);
+      setPlaying(true);
     }
 
-    if (state === PLAYER_STATES.PAUSED && playerStarted) {
-      setPaused(true);
-    }
-
-    if (state === PLAYER_STATES.ENDED && active) {
-      playerRef.current?.seekTo(0, true);
+    if (state === PLAYER_STATES.PAUSED || state === PLAYER_STATES.ENDED) {
+      setPlaying(false);
     }
   };
-
-  const handlePlaybackPress = () => {
-    if (!active || !hasVideo || !playerReady) {
-      return;
-    }
-
-    if (playerStarted && !paused) {
-      setPaused(true);
-      return;
-    }
-
-    setPaused(false);
-
-    if (playRequested) {
-      setPlayRequested(false);
-      requestAnimationFrame(() => setPlayRequested(true));
-    } else {
-      setPlayRequested(true);
-    }
-  };
-
-  const needsPlayButton = active
-    && hasVideo
+  const showLoadingPoster = hasVideo
     && mountVideo
-    && playerReady
-    && (!playerStarted || paused);
+    && (!playerReady || !minimumPosterElapsed);
+  const hasRating = typeof movie.vote_average === 'number' && movie.vote_average > 0;
 
   return (
     <View style={[styles.container, { width, height }]}>
-      <View pointerEvents="none" style={styles.media}>
+      <View style={styles.media}>
         {hasVideo && mountVideo ? (
           <>
             <YoutubePlayer
-              ref={playerRef}
               height={playerHeight}
               width={width}
               videoId={movie.videoKey ?? undefined}
-              play={active && playRequested && !paused}
-              mute={muted}
-              volume={100}
-              forceAndroidAutoplay={Platform.OS === 'android'}
+              play={playing}
               onChangeState={handlePlayerState}
               onError={() => setPlayerError(true)}
-              onReady={() => {
-                setPlayerReady(true);
-                if (active) {
-                  setPlayRequested(true);
-                }
-              }}
+              onReady={() => setPlayerReady(true)}
               initialPlayerParams={{
-                controls: false,
-                end: 60,
-                loop: true,
+                controls: true,
                 preventFullScreen: true,
                 rel: false,
               }}
@@ -155,13 +109,25 @@ export function MovieReel({
                 mediaPlaybackRequiresUserAction: false,
               }}
             />
-            <View style={[styles.youtubeTopMask, { top: playerTop, width }]} />
-            <View
-              style={[
-                styles.youtubeBottomMask,
-                { top: playerTop + playerHeight - 48, width },
-              ]}
-            />
+            {showLoadingPoster ? (
+              <View style={styles.loadingPoster}>
+                {movie.poster_path ? (
+                  <Image
+                    blurRadius={1}
+                    resizeMode="cover"
+                    source={{ uri: `https://image.tmdb.org/t/p/w780${movie.poster_path}` }}
+                    style={styles.poster}
+                  />
+                ) : (
+                  <View style={styles.noPoster} />
+                )}
+                <View style={styles.loadingShade} />
+                <View style={styles.loadingContent}>
+                  <ActivityIndicator color="#fff" size="large" />
+                  <Text style={styles.loadingLabel}>Preparando trailer...</Text>
+                </View>
+              </View>
+            ) : null}
           </>
         ) : movie.poster_path ? (
           <Image
@@ -181,57 +147,24 @@ export function MovieReel({
           <View style={styles.labelPill}>
             <Text style={styles.label}>{label}</Text>
           </View>
-          {paused && playerStarted ? (
-            <View style={styles.pausedPill}>
-              <Ionicons color="#fff" name="pause" size={14} />
-              <Text style={styles.pausedText}>Pausado</Text>
-            </View>
-          ) : null}
         </View>
-
-        {needsPlayButton ? (
-          <View pointerEvents="box-none" style={styles.playLayer}>
-            <Pressable
-              accessibilityLabel={playerStarted ? 'Reanudar trailer' : 'Reproducir trailer'}
-              accessibilityRole="button"
-              onPress={handlePlaybackPress}
-              style={({ pressed }) => [styles.playButton, pressed && styles.playButtonPressed]}
-            >
-              <Ionicons color="#fff" name="play" size={38} />
-            </Pressable>
-          </View>
-        ) : null}
 
         <View pointerEvents="box-none" style={styles.bottomRow}>
           <View pointerEvents="none" style={styles.movieInfo}>
             <Text style={styles.title}>{movie.title}</Text>
-            <Text numberOfLines={3} style={styles.overview}>
-              {movie.overview || 'Sin descripción disponible.'}
-            </Text>
+            {hasRating ? (
+              <View style={styles.ratingPill}>
+                <Ionicons color="#f6c85f" name="star" size={14} />
+                <Text style={styles.ratingText}>{movie.vote_average?.toFixed(1)} / 10</Text>
+                <Text style={styles.tmdbLabel}>TMDB</Text>
+              </View>
+            ) : null}
             {!movie.videoKey || playerError ? (
               <Text style={styles.videoUnavailable}>Trailer no disponible</Text>
-            ) : needsPlayButton ? (
-              <Text style={styles.startHint}>Tocá ▶ para reproducir el trailer</Text>
-            ) : (
-              <Text style={styles.tapHint}>Usá el control lateral para pausar</Text>
-            )}
+            ) : null}
           </View>
 
           <View pointerEvents="box-none" style={styles.actions}>
-            <Pressable
-              accessibilityLabel={muted ? 'Activar sonido' : 'Silenciar'}
-              accessibilityRole="button"
-              onPress={onToggleMuted}
-              style={({ pressed }) => [styles.actionButton, pressed && styles.pressed]}
-            >
-              <Ionicons
-                color="#fff"
-                name={muted ? 'volume-mute' : 'volume-high'}
-                size={30}
-              />
-              <Text style={styles.actionText}>{muted ? 'Sonido' : 'Silenciar'}</Text>
-            </Pressable>
-
             {onSave ? (
               <Pressable
                 accessibilityLabel={saved ? 'Quitar película guardada' : 'Guardar película'}
@@ -264,25 +197,6 @@ export function MovieReel({
                 <Text style={styles.actionText}>{reviewed ? 'Reseñada' : 'La vi'}</Text>
               </Pressable>
             ) : null}
-
-            {hasVideo && mountVideo ? (
-              <Pressable
-                accessibilityLabel={paused || !playerStarted ? 'Reproducir trailer' : 'Pausar trailer'}
-                accessibilityRole="button"
-                disabled={!playerReady}
-                onPress={handlePlaybackPress}
-                style={({ pressed }) => [styles.actionButton, pressed && styles.pressed]}
-              >
-                <Ionicons
-                  color={playerReady ? '#fff' : '#777'}
-                  name={paused || !playerStarted ? 'play' : 'pause'}
-                  size={30}
-                />
-                <Text style={styles.actionText}>
-                  {paused || !playerStarted ? 'Reproducir' : 'Pausar'}
-                </Text>
-              </Pressable>
-            ) : null}
           </View>
         </View>
       </View>
@@ -313,17 +227,25 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     width: '100%',
   },
-  youtubeTopMask: {
-    backgroundColor: 'rgba(0,0,0,0.92)',
-    height: 38,
-    left: 0,
-    position: 'absolute',
+  loadingPoster: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#090909',
+    zIndex: 3,
   },
-  youtubeBottomMask: {
-    backgroundColor: 'rgba(0,0,0,0.96)',
-    height: 48,
-    left: 0,
-    position: 'absolute',
+  loadingShade: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.38)',
+  },
+  loadingContent: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    gap: 10,
+    justifyContent: 'center',
+  },
+  loadingLabel: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '800',
   },
   overlay: {
     ...StyleSheet.absoluteFillObject,
@@ -350,44 +272,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
   },
-  pausedPill: {
-    alignItems: 'center',
-    backgroundColor: 'rgba(229, 9, 20, 0.86)',
-    borderRadius: 18,
-    flexDirection: 'row',
-    gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-  },
-  pausedText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  playLayer: {
-    ...StyleSheet.absoluteFillObject,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  playButton: {
-    alignItems: 'center',
-    backgroundColor: 'rgba(229, 9, 20, 0.94)',
-    borderColor: 'rgba(255,255,255,0.42)',
-    borderRadius: 42,
-    borderWidth: 1,
-    height: 84,
-    justifyContent: 'center',
-    paddingLeft: 5,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 5 },
-    shadowOpacity: 0.42,
-    shadowRadius: 10,
-    width: 84,
-  },
-  playButtonPressed: {
-    opacity: 0.78,
-    transform: [{ scale: 0.94 }],
-  },
   bottomRow: {
     alignItems: 'flex-end',
     flexDirection: 'row',
@@ -405,24 +289,28 @@ const styles = StyleSheet.create({
     textShadowOffset: { width: 0, height: 2 },
     textShadowRadius: 8,
   },
-  overview: {
-    color: '#eee',
-    fontSize: 14,
-    lineHeight: 20,
-    textShadowColor: 'rgba(0,0,0,0.95)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 6,
+  ratingPill: {
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(0,0,0,0.68)',
+    borderColor: 'rgba(246,200,95,0.34)',
+    borderRadius: 15,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
   },
-  tapHint: {
-    color: '#bbb',
-    fontSize: 12,
-    marginTop: 10,
-  },
-  startHint: {
+  ratingText: {
     color: '#fff',
-    fontSize: 12,
-    fontWeight: '800',
-    marginTop: 10,
+    fontSize: 13,
+    fontWeight: '900',
+  },
+  tmdbLabel: {
+    color: '#978e90',
+    fontSize: 9,
+    fontWeight: '900',
+    letterSpacing: 0.7,
   },
   videoUnavailable: {
     color: '#ffb3b8',

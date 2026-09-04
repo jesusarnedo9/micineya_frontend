@@ -1,6 +1,7 @@
 import * as SecureStore from 'expo-secure-store';
 
 export const TOKEN_KEY = 'jwt_token';
+export const REFRESH_TOKEN_KEY = 'refresh_token';
 export const USERNAME_KEY = 'profile_username';
 export const REMEMBERED_EMAIL_KEY = 'remembered_email';
 export const REMEMBERED_LOGIN_KEY = 'remembered_login';
@@ -11,6 +12,17 @@ export function getToken(): Promise<string | null> {
 
 export function saveToken(token: string): Promise<void> {
   return SecureStore.setItemAsync(TOKEN_KEY, token);
+}
+
+export function getRefreshToken(): Promise<string | null> {
+  return SecureStore.getItemAsync(REFRESH_TOKEN_KEY);
+}
+
+export async function saveAuthTokens(token: string, refreshToken: string): Promise<void> {
+  await Promise.all([
+    SecureStore.setItemAsync(TOKEN_KEY, token),
+    SecureStore.setItemAsync(REFRESH_TOKEN_KEY, refreshToken),
+  ]);
 }
 
 export function getUsername(): Promise<string | null> {
@@ -72,10 +84,14 @@ export async function saveSession(
   token: string,
   username: string,
   loginIdentifier?: string,
+  refreshToken?: string,
 ): Promise<void> {
   const writes = [
     SecureStore.setItemAsync(TOKEN_KEY, token),
     SecureStore.setItemAsync(USERNAME_KEY, username),
+    refreshToken
+      ? SecureStore.setItemAsync(REFRESH_TOKEN_KEY, refreshToken)
+      : SecureStore.deleteItemAsync(REFRESH_TOKEN_KEY),
   ];
 
   if (loginIdentifier?.trim()) {
@@ -90,6 +106,7 @@ export async function saveSession(
 export async function clearSession(): Promise<void> {
   await Promise.all([
     SecureStore.deleteItemAsync(TOKEN_KEY),
+    SecureStore.deleteItemAsync(REFRESH_TOKEN_KEY),
     SecureStore.deleteItemAsync(USERNAME_KEY),
   ]);
 }

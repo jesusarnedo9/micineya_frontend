@@ -60,6 +60,7 @@ export default function LoginScreen() {
           token,
           response.data.username || normalizedIdentifier.split('@')[0],
           normalizedIdentifier,
+          response.data.refreshToken,
         );
         try {
           const status = await fetchOnboardingStatus();

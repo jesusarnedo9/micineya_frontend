@@ -46,11 +46,9 @@ export function MovieReelFeed({
   const router = useRouter();
   const {
     favoriteIds,
-    muted,
     recordReview,
     reviewedIds,
     toggleFavorite,
-    toggleMuted,
   } = useAppExperience();
   const [movies, setMovies] = useState<Movie[]>([]);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -214,9 +212,9 @@ export function MovieReelFeed({
             length: viewport.height,
             offset: viewport.height * index,
           })}
-          initialNumToRender={2}
+          initialNumToRender={3}
           keyExtractor={(movie, index) => `${movie.id}-${index}`}
-          maxToRenderPerBatch={2}
+          maxToRenderPerBatch={3}
           onEndReached={() => void appendMore()}
           onEndReachedThreshold={0.6}
           onViewableItemsChanged={onViewableItemsChanged}
@@ -231,12 +229,14 @@ export function MovieReelFeed({
                   ? `${label} · ${Math.min(index + 1, movies.length)}/${movies.length}`
                   : label
               }
-              mountVideo={screenFocused && Math.abs(index - activeIndex) <= 1}
+              mountVideo={
+                screenFocused
+                && index >= activeIndex - 1
+                && index <= activeIndex + 2
+              }
               movie={item}
-              muted={muted}
               onReview={setReviewMovie}
               onSave={(movie) => void handleSave(movie)}
-              onToggleMuted={toggleMuted}
               reviewed={reviewedIds.has(item.id)}
               saved={favoriteIds.has(item.id)}
               width={viewport.width}
@@ -246,7 +246,7 @@ export function MovieReelFeed({
           snapToAlignment="start"
           snapToInterval={viewport.height}
           viewabilityConfig={viewabilityConfig}
-          windowSize={3}
+          windowSize={5}
         />
       ) : null}
 

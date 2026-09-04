@@ -17,6 +17,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import type { FavoriteMovie } from '../../api/movies';
 import { logoutFromServer } from '../../api/profile';
 import { ReviewComposer } from '../../components/reviews/review-composer';
+import { PreferencesPanel } from '../../components/profile/preferences-panel';
 import { useAppExperience } from '../../context/app-experience';
 import { clearSession } from '../../auth/session';
 import type { Movie } from '../../types/movie';
@@ -74,11 +75,15 @@ function RatingStars({ rating, size = 16 }: { rating: number; size?: number }) {
 
 function WatchedCard({
   onEdit,
+  onUnmark,
   review,
+  unmarking,
   username,
 }: {
   onEdit: () => void;
+  onUnmark: () => void;
   review: ProfileReview;
+  unmarking: boolean;
   username: string;
 }) {
   return (
@@ -128,6 +133,22 @@ function WatchedCard({
           </Text>
         </View>
       </View>
+      <Pressable
+        accessibilityLabel={`Marcar ${review.title} como no vista`}
+        accessibilityRole="button"
+        disabled={unmarking}
+        onPress={onUnmark}
+        style={({ pressed }) => [styles.unmarkButton, pressed && styles.pressed]}
+      >
+        {unmarking ? (
+          <ActivityIndicator color="#b99ca1" size="small" />
+        ) : (
+          <Ionicons color="#b99ca1" name="arrow-undo-outline" size={15} />
+        )}
+        <Text style={styles.unmarkText}>
+          {unmarking ? 'Quitando...' : 'Marcar como no vista'}
+        </Text>
+      </Pressable>
     </View>
   );
 }
@@ -138,14 +159,17 @@ export default function ProfileScreen() {
   const {
     favoriteMovies,
     recordReview,
+    refreshRecommendations,
     reviewedIds,
     reviews,
     toggleFavorite,
+    unmarkAsWatched,
     username,
   } = useAppExperience();
   const [section, setSection] = useState<ProfileSection>('watched');
   const [reviewMovie, setReviewMovie] = useState<Movie | null>(null);
   const [removingId, setRemovingId] = useState<number | null>(null);
+  const [unmarkingId, setUnmarkingId] = useState<number | null>(null);
   const [loggingOut, setLoggingOut] = useState(false);
   const posterWidth = Math.max(92, (width - 64) / 3);
 
@@ -206,6 +230,28 @@ export default function ProfileScreen() {
     }
   };
 
+  const confirmUnmark = (review: ProfileReview) => {
+    Alert.alert(
+      'Marcar como no vista',
+      `Se eliminarán tu puntuación y reseña de “${review.title}”.`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Marcar como no vista',
+          style: 'destructive',
+          onPress: () => {
+            setUnmarkingId(review.tmdbId);
+            void unmarkAsWatched(review.tmdbId)
+              .catch(() => {
+                Alert.alert('No se pudo actualizar', 'Intentá nuevamente en unos segundos.');
+              })
+              .finally(() => setUnmarkingId(null));
+          },
+        },
+      ],
+    );
+  };
+
   return (
     <SafeAreaView edges={['top']} style={styles.safeArea}>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
@@ -237,7 +283,7 @@ export default function ProfileScreen() {
               </View>
             </View>
             <View style={styles.identityCopy}>
-              <Text style={styles.welcome}>Tu espacio personal</Text>
+              <Text style={styles.welcome}>Tu cine personal</Text>
               <Text numberOfLines={1} style={styles.username}>{username}</Text>
             </View>
             <View style={styles.profileMark}>
@@ -264,6 +310,8 @@ export default function ProfileScreen() {
             </View>
           </View>
         </View>
+
+        <PreferencesPanel onSaved={refreshRecommendations} />
 
         <View style={styles.sectionSwitcher}>
           <Pressable
@@ -313,7 +361,9 @@ export default function ProfileScreen() {
                 <WatchedCard
                   key={review.tmdbId}
                   onEdit={() => setReviewMovie(reviewToMovie(review))}
+                  onUnmark={() => confirmUnmark(review)}
                   review={review}
+                  unmarking={unmarkingId === review.tmdbId}
                   username={username}
                 />
               ))
@@ -333,8 +383,8 @@ export default function ProfileScreen() {
           <View style={styles.sectionContent}>
             <View style={styles.sectionHeading}>
               <View>
-                <Text style={styles.sectionEyebrow}>PARA DESPUÉS</Text>
-                <Text style={styles.sectionTitle}>Tu biblioteca guardada</Text>
+                <Text style={styles.sectionEyebrow}>Pelis pendientes!!</Text>
+                <Text style={styles.sectionTitle}>Tu biblioteca</Text>
               </View>
               <Text style={styles.savedCount}>{favoriteMovies.length}</Text>
             </View>
@@ -721,6 +771,23 @@ const styles = StyleSheet.create({
     flex: 1,
     marginLeft: 14,
     paddingVertical: 3,
+  },
+  unmarkButton: {
+    alignItems: 'center',
+    alignSelf: 'flex-end',
+    borderColor: '#3a3033',
+    borderRadius: 13,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 5,
+    marginTop: 13,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+  },
+  unmarkText: {
+    color: '#b99ca1',
+    fontSize: 10,
+    fontWeight: '800',
   },
   reviewTitle: {
     color: '#fff',

@@ -65,3 +65,17 @@ export async function saveProfileReview(
     SecureStore.setItemAsync(indexKey(username), JSON.stringify(nextIds)),
   ]);
 }
+
+export async function deleteProfileReview(
+  username: string,
+  tmdbId: number,
+): Promise<void> {
+  const ids = await loadReviewIds(username);
+  await Promise.all([
+    SecureStore.deleteItemAsync(reviewKey(username, tmdbId)),
+    SecureStore.setItemAsync(
+      indexKey(username),
+      JSON.stringify(ids.filter((id) => id !== tmdbId)),
+    ),
+  ]);
+}

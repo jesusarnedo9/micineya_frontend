@@ -48,3 +48,7 @@ export async function fetchMyReviews(): Promise<ProfileReview[]> {
   const response = await apiClient.get<ReviewResponse[]>('/api/resenas/mias');
   return response.data.map(mapReview);
 }
+
+export async function deleteReview(tmdbId: number): Promise<void> {
+  await apiClient.delete(`/api/resenas/pelicula/${tmdbId}`);
+}

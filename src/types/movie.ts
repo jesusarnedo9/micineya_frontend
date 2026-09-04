@@ -3,6 +3,7 @@ export interface Movie {
   title: string;
   overview: string;
   poster_path: string | null;
+  vote_average?: number | null;
   videoKey?: string | null;
 }
 
