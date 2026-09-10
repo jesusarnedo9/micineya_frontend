@@ -8,7 +8,7 @@ export interface ApiFailure {
 
 export function isAuthError(error: unknown): boolean {
   return axios.isAxiosError(error)
-    && (error.response?.status === 401 || error.response?.status === 403);
+    && error.response?.status === 401;
 }
 
 export function describeApiError(error: unknown): ApiFailure {
@@ -20,7 +20,7 @@ export function describeApiError(error: unknown): ApiFailure {
     };
   }
 
-  if (error.response?.status === 401 || error.response?.status === 403) {
+  if (error.response?.status === 401) {
     return {
       title: 'Tu sesión venció',
       message: 'Volvé a iniciar sesión para seguir viendo películas.',

@@ -1,6 +1,9 @@
-import type { Movie } from './movie';
+import { mediaTypeOf, type MediaType, type Movie } from './movie';
 
 export interface ProfileReview {
+  mediaType?: MediaType;
+  seasonsWatched?: number[];
+  watchedAt?: string;
   id?: number;
   tmdbId: number;
   title: string;
@@ -8,6 +11,8 @@ export interface ProfileReview {
   rating: number;
   comment: string;
   reviewedAt: string;
+  spoiler?: boolean;
+  hiddenByModeration?: boolean;
 }
 
 export function createProfileReview(
@@ -16,6 +21,8 @@ export function createProfileReview(
   comment: string,
 ): ProfileReview {
   return {
+    mediaType: mediaTypeOf(movie),
+    seasonsWatched: [],
     tmdbId: movie.id,
     title: movie.title,
     posterPath: movie.poster_path,

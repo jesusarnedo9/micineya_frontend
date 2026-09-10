@@ -183,7 +183,7 @@ export function MovieReel({
           <View pointerEvents="box-none" style={styles.actions}>
             {onSave ? (
               <Pressable
-                accessibilityLabel={saved ? 'Quitar película guardada' : 'Guardar película'}
+                accessibilityLabel={saved ? 'Quitar de guardadas' : 'Guardar para después'}
                 accessibilityRole="button"
                 onPress={() => onSave(movie)}
                 style={({ pressed }) => [styles.actionButton, pressed && styles.pressed]}

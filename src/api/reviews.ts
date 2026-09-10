@@ -1,8 +1,11 @@
 import { apiClient } from './client';
-import type { Movie } from '../types/movie';
-import { createProfileReview, type ProfileReview } from '../types/profile';
+import { mediaTypeOf, type MediaType, type Movie } from '../types/movie';
+import type { ProfileReview } from '../types/profile';
 
 interface ReviewResponse {
+  mediaType?: MediaType;
+  temporadasVistas?: number[];
+  fechaVista?: string;
   id: number;
   tmdbId: number;
   titulo: string;
@@ -10,10 +13,15 @@ interface ReviewResponse {
   calificacion: number;
   comentario: string | null;
   fechaActualizacion: string | null;
+  spoiler?: boolean;
+  ocultadaModeracion?: boolean;
 }
 
 function mapReview(review: ReviewResponse): ProfileReview {
   return {
+    mediaType: review.mediaType ?? 'movie',
+    seasonsWatched: review.temporadasVistas ?? [],
+    watchedAt: review.fechaVista ?? review.fechaActualizacion ?? '',
     id: review.id,
     tmdbId: review.tmdbId,
     title: review.titulo,
@@ -21,6 +29,8 @@ function mapReview(review: ReviewResponse): ProfileReview {
     rating: review.calificacion,
     comment: review.comentario ?? '',
     reviewedAt: review.fechaActualizacion ?? '',
+    spoiler: review.spoiler ?? false,
+    hiddenByModeration: review.ocultadaModeracion ?? false,
   };
 }
 
@@ -28,27 +38,32 @@ export async function submitReview(
   movie: Movie,
   rating: number,
   comment: string,
+  spoiler = false,
+  seasonsWatched: number[] = [],
 ): Promise<ProfileReview> {
-  const response = await apiClient.post<ReviewResponse>('/api/resenas', {
+  const response = await apiClient.post<ReviewResponse>('/api/biblioteca/resenas', {
+    mediaType: mediaTypeOf(movie),
+    temporadasVistas: seasonsWatched,
     tmdbId: movie.id,
     titulo: movie.title,
     posterPath: movie.poster_path,
     calificacion: rating,
     comentario: comment.trim(),
+    spoiler,
   });
 
   if (!response.data || typeof response.data !== 'object') {
-    return createProfileReview(movie, rating, comment);
+    throw new Error('Respuesta de reseña no válida');
   }
 
   return mapReview(response.data);
 }
 
 export async function fetchMyReviews(): Promise<ProfileReview[]> {
-  const response = await apiClient.get<ReviewResponse[]>('/api/resenas/mias');
+  const response = await apiClient.get<ReviewResponse[]>('/api/biblioteca/resenas');
   return response.data.map(mapReview);
 }
 
-export async function deleteReview(tmdbId: number): Promise<void> {
-  await apiClient.delete(`/api/resenas/pelicula/${tmdbId}`);
+export async function deleteReview(tmdbId: number, type: MediaType = 'movie'): Promise<void> {
+  await apiClient.delete(`/api/biblioteca/resenas/${type}/${tmdbId}`);
 }

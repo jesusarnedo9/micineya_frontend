@@ -86,7 +86,7 @@ apiClient.interceptors.response.use(
   (response) => response,
   async (error: AxiosError) => {
     const originalRequest = error.config as RetriableRequestConfig | undefined;
-    const isAuthFailure = error.response?.status === 401 || error.response?.status === 403;
+    const isAuthFailure = error.response?.status === 401;
     const isPublicAuthRequest = originalRequest?.url
       ? publicAuthPaths.has(originalRequest.url)
       : false;

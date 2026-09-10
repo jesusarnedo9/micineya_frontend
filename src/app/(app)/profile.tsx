@@ -17,20 +17,23 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import type { FavoriteMovie } from '../../api/movies';
 import { logoutFromServer } from '../../api/profile';
 import { ReviewComposer } from '../../components/reviews/review-composer';
-import { PreferencesPanel } from '../../components/profile/preferences-panel';
 import { AccountSettings } from '../../components/profile/account-settings';
+import { PreferencesPanel } from '../../components/profile/preferences-panel';
 import { ProfileAvatar } from '../../components/profile/profile-avatar';
 import { ProfilePhotoPicker } from '../../components/profile/profile-photo-picker';
+import { ProfilePopcornRoom } from '../../components/profile/popcorn-room';
 import { useAppExperience } from '../../context/app-experience';
 import { clearSession } from '../../auth/session';
-import type { Movie } from '../../types/movie';
+import { contentKey, mediaTypeOf, type Movie } from '../../types/movie';
+import { ContentTypeBadge } from '../../components/content-type-tabs';
 import type { ProfileReview } from '../../types/profile';
 
-type ProfileSection = 'watched' | 'saved';
+type ProfileSection = 'watched' | 'saved' | 'achievements';
 
 function favoriteToMovie(favorite: FavoriteMovie): Movie {
   return {
     id: favorite.tmdbId,
+    mediaType: mediaTypeOf(favorite),
     title: favorite.titulo,
     overview: '',
     poster_path: favorite.posterPath,
@@ -41,6 +44,7 @@ function favoriteToMovie(favorite: FavoriteMovie): Movie {
 function reviewToMovie(review: ProfileReview): Movie {
   return {
     id: review.tmdbId,
+    mediaType: mediaTypeOf(review),
     title: review.title,
     overview: '',
     poster_path: review.posterPath,
@@ -97,7 +101,7 @@ function WatchedCard({
         <ProfileAvatar uri={photoUri} username={username} size={34} />
         <View style={styles.reviewAuthorCopy}>
           <Text style={styles.reviewAuthor}>{username}</Text>
-          <Text style={styles.reviewDate}>{formatReviewDate(review.reviewedAt)}</Text>
+          <Text style={styles.reviewDate}>{formatReviewDate(review.watchedAt ?? review.reviewedAt)}</Text>
         </View>
         <View style={styles.reviewActions}>
           <Pressable
@@ -111,7 +115,7 @@ function WatchedCard({
           </Pressable>
           <View style={styles.watchedBadge}>
             <Ionicons color="#ff7379" name="checkmark" size={13} />
-            <Text style={styles.watchedBadgeText}>LA VI</Text>
+            <Text style={styles.watchedBadgeText}>{mediaTypeOf(review) === 'tv' ? 'VISTA' : 'LA VI'}</Text>
           </View>
         </View>
       </View>
@@ -129,8 +133,11 @@ function WatchedCard({
           </View>
         )}
         <View style={styles.reviewBody}>
+          <ContentTypeBadge type={review.mediaType} />
           <Text numberOfLines={2} style={styles.reviewTitle}>{review.title}</Text>
           <RatingStars rating={review.rating} />
+          {review.spoiler && <Text style={styles.emptyReviewText}>Contiene spoilers</Text>}
+          {review.hiddenByModeration && <Text style={styles.emptyReviewText}>Oculta en Comunidad por moderación</Text>}
           <Text numberOfLines={5} style={review.comment ? styles.reviewText : styles.emptyReviewText}>
             {review.comment || 'Escribí tu reseña.'}
           </Text>
@@ -172,8 +179,8 @@ export default function ProfileScreen() {
   } = useAppExperience();
   const [section, setSection] = useState<ProfileSection>('watched');
   const [reviewMovie, setReviewMovie] = useState<Movie | null>(null);
-  const [removingId, setRemovingId] = useState<number | null>(null);
-  const [unmarkingId, setUnmarkingId] = useState<number | null>(null);
+  const [removingId, setRemovingId] = useState<string | null>(null);
+  const [unmarkingId, setUnmarkingId] = useState<string | null>(null);
   const [loggingOut, setLoggingOut] = useState(false);
   const posterWidth = Math.max(92, (width - 64) / 3);
 
@@ -212,7 +219,7 @@ export default function ProfileScreen() {
   };
 
   const handleSavedPress = (favorite: FavoriteMovie) => {
-    if (reviewedIds.has(favorite.tmdbId)) {
+    if (reviewedIds.has(contentKey(favorite))) {
       setSection('watched');
       return;
     }
@@ -224,7 +231,7 @@ export default function ProfileScreen() {
       return;
     }
 
-    setRemovingId(favorite.tmdbId);
+    setRemovingId(contentKey(favorite));
     try {
       await toggleFavorite(favoriteToMovie(favorite));
     } catch {
@@ -237,15 +244,15 @@ export default function ProfileScreen() {
   const confirmUnmark = (review: ProfileReview) => {
     Alert.alert(
       'Marcar como no vista',
-      `Se eliminarán tu puntuación y reseña de “${review.title}”.`,
+      `Se eliminarán tu puntuación y reseña de “${review.title}”${mediaTypeOf(review) === 'tv' ? ', sus temporadas vistas y los pochoclos correspondientes' : ''}.`,
       [
         { text: 'Cancelar', style: 'cancel' },
         {
           text: 'Marcar como no vista',
           style: 'destructive',
           onPress: () => {
-            setUnmarkingId(review.tmdbId);
-            void unmarkAsWatched(review.tmdbId)
+            setUnmarkingId(contentKey(review));
+            void unmarkAsWatched(review.tmdbId, mediaTypeOf(review))
               .catch(() => {
                 Alert.alert('No se pudo actualizar', 'Intentá nuevamente en unos segundos.');
               })
@@ -264,20 +271,7 @@ export default function ProfileScreen() {
           <View style={styles.heroOrbSmall} />
           <View style={styles.heroTopRow}>
             <Text style={styles.heroEyebrow}>MI CINE</Text>
-            <Pressable
-              accessibilityLabel="Cerrar sesión"
-              accessibilityRole="button"
-              disabled={loggingOut}
-              onPress={confirmLogout}
-              style={({ pressed }) => [styles.logoutButton, pressed && styles.pressed]}
-            >
-              {loggingOut ? (
-                <ActivityIndicator color="#ff9ba0" size="small" />
-              ) : (
-                <Ionicons color="#ff9ba0" name="log-out-outline" size={17} />
-              )}
-              <Text style={styles.logoutText}>{loggingOut ? 'Saliendo...' : 'Salir'}</Text>
-            </Pressable>
+            {loggingOut ? <ActivityIndicator color="#ff9ba0" /> : <AccountSettings compact showCommunity onLogout={confirmLogout} />}
           </View>
 
           <View style={styles.identityRow}>
@@ -311,10 +305,10 @@ export default function ProfileScreen() {
           </View>
         </View>
 
-        <PreferencesPanel onSaved={refreshRecommendations} />
-        <AccountSettings />
 
-        <View style={styles.sectionSwitcher}>
+        <PreferencesPanel onSaved={refreshRecommendations} />
+
+        <View accessibilityRole="tablist" style={styles.sectionSwitcher}>
           <Pressable
             accessibilityRole="tab"
             accessibilityState={{ selected: section === 'watched' }}
@@ -345,14 +339,25 @@ export default function ProfileScreen() {
               Guardadas
             </Text>
           </Pressable>
+          <Pressable
+            accessibilityRole="tab"
+            accessibilityState={{ selected: section === 'achievements' }}
+            onPress={() => setSection('achievements')}
+            style={[styles.sectionButton, section === 'achievements' && styles.sectionButtonActive]}
+          >
+            <Ionicons color={section === 'achievements' ? '#fff' : '#80777a'} name="trophy-outline" size={18} />
+            <Text style={[styles.sectionButtonText, section === 'achievements' && styles.sectionButtonTextActive]}>Logros</Text>
+          </Pressable>
         </View>
 
-        {section === 'watched' ? (
+        {section === 'achievements' ? (
+          <ProfilePopcornRoom reviewKey={reviews.map((r) => `${contentKey(r)}:${[...(r.seasonsWatched ?? [])].sort((a, b) => a - b).join('-')}`).sort().join(',')} />
+        ) : section === 'watched' ? (
           <View style={styles.sectionContent}>
             <View style={styles.sectionHeading}>
               <View>
                 <Text style={styles.sectionEyebrow}>TU HISTORIAL</Text>
-                <Text style={styles.sectionTitle}>Películas que ya viste</Text>
+                <Text style={styles.sectionTitle}>Lo que ya viste</Text>
               </View>
               <Ionicons color="#5c5154" name="albums-outline" size={23} />
             </View>
@@ -360,11 +365,11 @@ export default function ProfileScreen() {
             {reviews.length > 0 ? (
               reviews.map((review) => (
                 <WatchedCard
-                  key={review.tmdbId}
+                  key={contentKey(review)}
                   onEdit={() => setReviewMovie(reviewToMovie(review))}
                   onUnmark={() => confirmUnmark(review)}
                   review={review}
-                  unmarking={unmarkingId === review.tmdbId}
+                  unmarking={unmarkingId === contentKey(review)}
                   username={username}
                   photoUri={photoUri}
                 />
@@ -374,9 +379,9 @@ export default function ProfileScreen() {
                 <View style={styles.emptyIcon}>
                   <Ionicons color="#ff7379" name="ticket-outline" size={34} />
                 </View>
-                <Text style={styles.emptyTitle}>Tu historia empieza con una película</Text>
+                <Text style={styles.emptyTitle}>Tu historia empieza acá</Text>
                 <Text style={styles.emptyText}>
-                  En cualquier reel tocá “La vi”, puntuá la película y va a aparecer acá.
+                  En cualquier reel tocá “La vi”. Para series, elegí las temporadas que terminaste.
                 </Text>
               </View>
             )}
@@ -385,7 +390,7 @@ export default function ProfileScreen() {
           <View style={styles.sectionContent}>
             <View style={styles.sectionHeading}>
               <View>
-                <Text style={styles.sectionEyebrow}>Pelis pendientes!!</Text>
+                <Text style={styles.sectionEyebrow}>PARA DESPUÉS</Text>
                 <Text style={styles.sectionTitle}>Tu biblioteca</Text>
               </View>
               <Text style={styles.savedCount}>{favoriteMovies.length}</Text>
@@ -394,9 +399,9 @@ export default function ProfileScreen() {
             {favoriteMovies.length > 0 ? (
               <View style={styles.posterGrid}>
                 {favoriteMovies.map((favorite) => {
-                  const watched = reviewedIds.has(favorite.tmdbId);
+                  const watched = reviewedIds.has(contentKey(favorite));
                   return (
-                    <View key={favorite.tmdbId} style={{ width: posterWidth }}>
+                    <View key={contentKey(favorite)} style={{ width: posterWidth }}>
                       <Pressable
                         accessibilityLabel={
                           watched
@@ -440,12 +445,13 @@ export default function ProfileScreen() {
                         onPress={() => void handleRemove(favorite)}
                         style={({ pressed }) => [styles.removeButton, pressed && styles.pressed]}
                       >
-                        {removingId === favorite.tmdbId ? (
+                        {removingId === contentKey(favorite) ? (
                           <ActivityIndicator color="#fff" size="small" />
                         ) : (
                           <Ionicons color="#fff" name="bookmark" size={17} />
                         )}
                       </Pressable>
+                      <ContentTypeBadge type={favorite.mediaType} />
                       <Text numberOfLines={2} style={styles.savedTitle}>{favorite.titulo}</Text>
                     </View>
                   );
@@ -467,7 +473,7 @@ export default function ProfileScreen() {
       </ScrollView>
 
       <ReviewComposer
-        existingReview={reviews.find((review) => review.tmdbId === reviewMovie?.id) ?? null}
+        existingReview={reviewMovie ? reviews.find((review) => contentKey(review) === contentKey(reviewMovie)) ?? null : null}
         movie={reviewMovie}
         onClose={() => setReviewMovie(null)}
         onSubmitted={recordReview}
@@ -615,10 +621,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderRadius: 12,
     flex: 1,
-    flexDirection: 'row',
-    gap: 7,
+    flexDirection: 'column',
+    gap: 4,
     justifyContent: 'center',
-    minHeight: 44,
+    minHeight: 58,
+    paddingVertical: 6,
+    paddingHorizontal: 2,
   },
   sectionButtonActive: {
     backgroundColor: '#9f1320',
@@ -627,7 +635,7 @@ const styles = StyleSheet.create({
     color: '#80777a',
     fontSize: 12,
     fontWeight: '900',
-    letterSpacing: 0.7,
+    textAlign: 'center',
   },
   sectionButtonTextActive: {
     color: '#fff',

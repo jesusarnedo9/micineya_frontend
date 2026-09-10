@@ -17,7 +17,7 @@ import { fetchMoviePage } from '../../api/movies';
 import { ApiFailure, describeApiError } from '../../api/errors';
 import { clearSession } from '../../auth/session';
 import { useAppExperience } from '../../context/app-experience';
-import type { Movie } from '../../types/movie';
+import { contentKey, type Movie } from '../../types/movie';
 import { ReviewComposer } from '../reviews/review-composer';
 import { MovieReel } from './movie-reel';
 
@@ -50,6 +50,7 @@ export function MovieReelFeed({
     favoriteIds,
     recordReview,
     reviewedIds,
+    reviews,
     toggleFavorite,
     dismissMovie,
     dismissedIds,
@@ -69,7 +70,7 @@ export function MovieReelFeed({
   const activeIndexRef = useRef(0);
   activeIndexRef.current = activeIndex;
   const visibleMovies = useMemo(() => allowDismiss
-    ? movies.filter((movie) => !dismissedIds.has(movie.id)) : movies, [movies, dismissedIds, allowDismiss]);
+    ? movies.filter((movie) => !dismissedIds.has(contentKey(movie))) : movies, [movies, dismissedIds, allowDismiss]);
 
   useEffect(() => {
     const index = Math.min(activeIndexRef.current, Math.max(0, visibleMovies.length - 1));
@@ -145,7 +146,7 @@ export function MovieReelFeed({
       await toggleFavorite(movie);
     } catch {
       Alert.alert(
-        favoriteIds.has(movie.id) ? 'No se pudo quitar' : 'No se pudo guardar',
+        favoriteIds.has(contentKey(movie)) ? 'No se pudo quitar' : 'No se pudo guardar',
         'Intentá nuevamente en unos segundos.',
       );
     }
@@ -174,7 +175,7 @@ export function MovieReelFeed({
     try {
       const page = await fetchMoviePage(endpoint, nextPage);
       setMovies((current) => Array.from(
-        new Map([...current, ...page.movies].map((movie) => [movie.id, movie])).values(),
+        new Map([...current, ...page.movies].map((movie) => [contentKey(movie), movie])).values(),
       ));
       nextPageRef.current = page.page + 1;
       totalPagesRef.current = page.totalPages;
@@ -199,7 +200,7 @@ export function MovieReelFeed({
     return (
       <View style={styles.centered}>
         <ActivityIndicator color="#e50914" size="large" />
-        <Text style={styles.loadingText}>Buscando tu próxima película...</Text>
+        <Text style={styles.loadingText}>Buscando algo para vos...</Text>
       </View>
     );
   }
@@ -247,7 +248,7 @@ export function MovieReelFeed({
             offset: viewport.height * index,
           })}
           initialNumToRender={3}
-          keyExtractor={(movie) => String(movie.id)}
+          keyExtractor={contentKey}
           maxToRenderPerBatch={3}
           onEndReached={() => void appendMore()}
           onEndReachedThreshold={0.6}
@@ -273,8 +274,8 @@ export function MovieReelFeed({
               onDismiss={allowDismiss ? (movie) => void handleDismiss(movie) : undefined}
               dismissDisabled={recommendationsBusy}
               onSave={(movie) => void handleSave(movie)}
-              reviewed={reviewedIds.has(item.id)}
-              saved={favoriteIds.has(item.id)}
+              reviewed={reviewedIds.has(contentKey(item))}
+              saved={favoriteIds.has(contentKey(item))}
               width={viewport.width}
             />
           )}
@@ -287,6 +288,7 @@ export function MovieReelFeed({
       ) : null}
 
       <ReviewComposer
+        existingReview={reviewMovie ? reviews.find((r) => contentKey(r) === contentKey(reviewMovie)) ?? null : null}
         movie={reviewMovie}
         onClose={() => setReviewMovie(null)}
         onSubmitted={recordReview}

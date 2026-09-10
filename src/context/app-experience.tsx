@@ -1,62 +1,47 @@
-import {
-  createContext,
-  PropsWithChildren,
-  useCallback,
-  useContext,
-  useEffect,
-  useRef,
-  useState,
-} from 'react';
+import { createContext, PropsWithChildren, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { AppState } from 'react-native';
-
 import {
-  FavoriteMovie,
-  fetchFavorites,
-  fetchMovies,
-  removeFavorite,
-  saveFavorite,
-  renewMovies,
-  dismissMovie as dismissMovieRequest,
-  undoMovieDismissal,
+  FavoriteMovie, fetchFavorites, fetchRecommendationBatch, removeFavorite, saveFavorite, renewMovies,
+  dismissMovie as dismissMovieRequest, undoMovieDismissal,
 } from '../api/movies';
 import { getAccountStorageKey, getProfileName } from '../auth/session';
 import { fetchUserProfile, fetchProfilePhoto } from '../api/profile';
 import { deleteReview, fetchMyReviews } from '../api/reviews';
-import {
-  deleteProfileReview,
-  loadProfileReviews,
-  saveProfileReview,
-} from '../profile/review-storage';
-import type { Movie } from '../types/movie';
+import { deleteProfileReview, loadProfileReviews, saveProfileReview } from '../profile/review-storage';
+import { contentKey, mediaTypeOf, type MediaType, type Movie } from '../types/movie';
 import type { ProfileReview } from '../types/profile';
 
 interface AppExperienceValue {
-  favoriteIds: ReadonlySet<number>;
+  favoriteIds: ReadonlySet<string>;
   favoriteMovies: FavoriteMovie[];
   recordReview: (review: ProfileReview) => Promise<void>;
-  unmarkAsWatched: (tmdbId: number) => Promise<void>;
-  reviewedIds: ReadonlySet<number>;
+  unmarkAsWatched: (tmdbId: number, type?: MediaType) => Promise<void>;
+  reviewedIds: ReadonlySet<string>;
   reviews: ProfileReview[];
   toggleFavorite: (movie: Movie) => Promise<boolean>;
   username: string;
   photoUri: string | null;
   setProfilePhoto: (uri: string | null) => void;
-  loadRecommendations: () => Promise<Movie[]>;
+  loadRecommendations: (type?: MediaType) => Promise<Movie[]>;
   recommendationsVersion: number;
-  refreshRecommendations: () => void;
-  renewRecommendations: () => Promise<void>;
+  recommendationNotices: Partial<Record<MediaType, string | null>>;
+  refreshRecommendations: (type?: MediaType) => void;
+  renewRecommendations: (type?: MediaType) => Promise<void>;
   dismissMovie: (movie: Movie) => Promise<void>;
   undoDismissal: () => Promise<void>;
   clearDismissalNotice: () => void;
-  dismissedIds: ReadonlySet<number>;
+  dismissedIds: ReadonlySet<string>;
   lastDismissed: Movie | null;
   recommendationsBusy: boolean;
 }
-
+interface Batch { movies: Movie[]; loadedAt: number; revision: number; pending: Promise<Movie[]> | null }
+const newBatch = (): Batch => ({ movies: [], loadedAt: 0, revision: 0, pending: null });
+const orderReviews = (reviews: ProfileReview[]) => [...reviews].sort((a, b) =>
+  (b.watchedAt ?? b.reviewedAt).localeCompare(a.watchedAt ?? a.reviewedAt));
 const AppExperienceContext = createContext<AppExperienceValue | null>(null);
 
 export function AppExperienceProvider({ children }: PropsWithChildren) {
-  const [favoriteIds, setFavoriteIds] = useState<Set<number>>(new Set());
+  const [favoriteIds, setFavoriteIds] = useState<Set<string>>(new Set());
   const [favoriteMovies, setFavoriteMovies] = useState<FavoriteMovie[]>([]);
   const [reviews, setReviews] = useState<ProfileReview[]>([]);
   const [username, setUsername] = useState('Cinéfilo');
@@ -67,19 +52,18 @@ export function AppExperienceProvider({ children }: PropsWithChildren) {
     setPhotoUri(uri);
   }, []);
   const [recommendationsVersion, setRecommendationsVersion] = useState(0);
-  const [dismissedIds, setDismissedIds] = useState<Set<number>>(new Set());
+  const [recommendationNotices, setRecommendationNotices] = useState<Partial<Record<MediaType, string | null>>>({});
+  const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
   const [lastDismissed, setLastDismissed] = useState<Movie | null>(null);
   const [recommendationsBusy, setRecommendationsBusy] = useState(false);
-  const dismissedIdsRef = useRef<Set<number>>(new Set());
-  const recommendationsBusyRef = useRef(false);
-  const recommendationsLoadedAtRef = useRef(0);
-  const favoriteIdsRef = useRef<Set<number>>(new Set());
-  const favoriteMoviesRef = useRef<FavoriteMovie[]>([]);
-  const reviewedIdsRef = useRef<Set<number>>(new Set());
-  const reviewAccountRef = useRef('current_user');
-  const recommendationsRef = useRef<Movie[]>([]);
-  const pendingRequestRef = useRef<Promise<Movie[]> | null>(null);
-  const recommendationRevisionRef = useRef(0);
+  const dismissedIdsRef = useRef<Set<string>>(new Set());
+  const busyRef = useRef(false);
+  const favoritesRef = useRef<FavoriteMovie[]>([]);
+  const favoriteMutations = useRef(new Set<string>());
+  const reviewedIdsRef = useRef<Set<string>>(new Set());
+  const batches = useRef<Record<MediaType, Batch>>({ movie: newBatch(), tv: newBatch() });
+  const favoriteChanges = useRef(new Set<string>());
+  const reviewChanges = useRef(new Set<string>());
 
   useEffect(() => {
     let mounted = true;
@@ -92,281 +76,182 @@ export function AppExperienceProvider({ children }: PropsWithChildren) {
 
   useEffect(() => {
     let mounted = true;
-
-    fetchFavorites()
-      .then((favorites) => {
-        if (!mounted) {
-          return;
+    void fetchFavorites().then((favorites) => {
+      if (!mounted) return;
+      const merged = [...favorites.filter((f) => !favoriteChanges.current.has(contentKey(f))),
+        ...favoritesRef.current.filter((f) => favoriteChanges.current.has(contentKey(f)))];
+      favoritesRef.current = merged;
+      setFavoriteIds(new Set(merged.map(contentKey)));
+      setFavoriteMovies(merged);
+    }).catch(() => console.warn('No se pudieron cargar las guardadas'));
+    void Promise.all([getProfileName(), getAccountStorageKey(), fetchUserProfile().catch(() => null)])
+      .then(async ([localName, account, profile]) => {
+        if (mounted) setUsername(profile?.username || localName);
+        const server = await fetchMyReviews().catch(() => null);
+        const loaded = server ?? await loadProfileReviews(account).catch(() => []);
+        if (mounted) {
+          setReviews((current) => {
+            const merged = orderReviews([...loaded.filter((r) => !reviewChanges.current.has(contentKey(r))),
+              ...current.filter((r) => reviewChanges.current.has(contentKey(r)))]);
+            reviewedIdsRef.current = new Set(merged.map(contentKey));
+            return merged;
+          });
         }
-
-        const nextIds = new Set(favorites.map((movie) => movie.tmdbId));
-        favoriteIdsRef.current = nextIds;
-        favoriteMoviesRef.current = favorites;
-        setFavoriteIds(nextIds);
-        setFavoriteMovies(favorites);
-      })
-      .catch((error) => {
-        console.warn('No se pudieron cargar las películas guardadas', error);
-      });
-
-    return () => {
-      mounted = false;
-    };
+      }).catch(() => console.warn('No se pudo cargar el historial'));
+    return () => { mounted = false; };
   }, []);
 
-  useEffect(() => {
-    let mounted = true;
-
-    Promise.all([getProfileName(), getAccountStorageKey(), fetchUserProfile().catch(() => null)])
-      .then(([localUsername, accountKey, profile]) => {
-        if (mounted) {
-          reviewAccountRef.current = accountKey;
-          setUsername(profile?.username || localUsername);
-        }
-        return Promise.all([
-          fetchMyReviews().catch(() => null),
-          loadProfileReviews(accountKey).catch(() => []),
-        ]);
-      })
-      .then(([serverReviews, localReviews]) => {
-        if (mounted) {
-          // El servidor es la fuente de verdad: no resucitar reseñas eliminadas en otro dispositivo.
-          const mergedReviews = serverReviews ?? localReviews;
-          reviewedIdsRef.current = new Set(mergedReviews.map((review) => review.tmdbId));
-          setReviews(mergedReviews);
-        }
-      })
-      .catch((error) => {
-        console.warn('No se pudo cargar el historial de reseñas', error);
-      });
-
-    return () => {
-      mounted = false;
-    };
-  }, []);
-
-  const loadRecommendations = useCallback(async () => {
-    if (recommendationsLoadedAtRef.current > 0) {
-      return recommendationsRef.current;
-    }
-
-    if (pendingRequestRef.current) {
-      return pendingRequestRef.current;
-    }
-
-    const requestRevision = recommendationRevisionRef.current;
-    const request = fetchMovies('/api/peliculas/recomendadas')
-      .then((movies) => {
-        const recommendations = movies.slice(0, 10);
-        if (requestRevision === recommendationRevisionRef.current) {
-          recommendationsRef.current = recommendations;
-          recommendationsLoadedAtRef.current = Date.now();
-        }
-        return recommendations;
-      })
-      .finally(() => {
-        if (pendingRequestRef.current === request) {
-          pendingRequestRef.current = null;
-        }
-      });
-
-    pendingRequestRef.current = request;
+  const loadRecommendations = useCallback(async (type: MediaType = 'movie') => {
+    const batch = batches.current[type];
+    if (batch.loadedAt > 0) return batch.movies;
+    if (batch.pending) return batch.pending;
+    const revision = batch.revision;
+    const request = fetchRecommendationBatch(type).then(({ movies, notice }) => {
+      const result = movies.slice(0, 10).map((movie) => ({ ...movie, mediaType: type }));
+      if (revision === batch.revision) {
+        batch.movies = result;
+        batch.loadedAt = Date.now();
+        setRecommendationNotices((current) => ({ ...current, [type]: notice }));
+      }
+      return result;
+    }).finally(() => { if (batch.pending === request) batch.pending = null; });
+    batch.pending = request;
     return request;
   }, []);
 
-  const refreshRecommendations = useCallback(() => {
-    recommendationRevisionRef.current += 1;
-    recommendationsRef.current = [];
-    recommendationsLoadedAtRef.current = 0;
-    pendingRequestRef.current = null;
-    setRecommendationsVersion((current) => current + 1);
+  const refreshRecommendations = useCallback((type?: MediaType) => {
+    for (const selectedType of type ? [type] : (['movie', 'tv'] as const)) {
+      const batch = batches.current[selectedType];
+      batch.revision += 1;
+      batch.movies = [];
+      batch.loadedAt = 0;
+      batch.pending = null;
+      setRecommendationNotices((current) => ({ ...current, [selectedType]: null }));
+    }
+    setRecommendationsVersion((v) => v + 1);
   }, []);
 
-  const renewRecommendations = useCallback(async () => {
-    if (recommendationsBusyRef.current) return;
-    recommendationsBusyRef.current = true;
-    setRecommendationsBusy(true);
+  const renewRecommendations = useCallback(async (type: MediaType = 'movie') => {
+    if (busyRef.current) return;
+    busyRef.current = true; setRecommendationsBusy(true);
     try {
-      // Esperamos la carga inicial antes de excluir el lote que ya está en pantalla.
-      await pendingRequestRef.current?.catch(() => undefined);
-      const revision = recommendationRevisionRef.current;
-      const movies = await renewMovies(recommendationsRef.current.map((movie) => movie.id));
-      if (revision !== recommendationRevisionRef.current) return;
-      recommendationRevisionRef.current += 1;
-      recommendationsRef.current = movies.slice(0, 10);
-      recommendationsLoadedAtRef.current = Date.now();
-      setRecommendationsVersion((current) => current + 1);
-    } finally {
-      recommendationsBusyRef.current = false;
-      setRecommendationsBusy(false);
-    }
+      const batch = batches.current[type];
+      await batch.pending?.catch(() => undefined);
+      const revision = batch.revision;
+      const { movies, notice } = await renewMovies(batch.movies.map((m) => m.id), type);
+      if (revision !== batch.revision) return;
+      batch.revision += 1;
+      batch.movies = movies.slice(0, 10).map((m) => ({ ...m, mediaType: type }));
+      batch.loadedAt = Date.now();
+      setRecommendationNotices((current) => ({ ...current, [type]: notice }));
+      setRecommendationsVersion((v) => v + 1);
+    } finally { busyRef.current = false; setRecommendationsBusy(false); }
   }, []);
 
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (state) => {
-      if (state === 'active' && recommendationsLoadedAtRef.current > 0
-          && Date.now() - recommendationsLoadedAtRef.current >= 24 * 60 * 60 * 1000) {
-        void renewRecommendations().catch(() => {
-          // Conservamos el lote anterior si no hay conexión; se puede reintentar manualmente.
-        });
-      }
+      if (state !== 'active') return;
+      void (async () => {
+        for (const type of ['movie', 'tv'] as const) {
+          const batch = batches.current[type];
+          if (batch.loadedAt > 0 && Date.now() - batch.loadedAt >= 24 * 60 * 60 * 1000) {
+            await renewRecommendations(type).catch(() => {});
+          }
+        }
+      })();
     });
     return () => subscription.remove();
   }, [renewRecommendations]);
 
-  const dismissMovie = useCallback(async (movie: Movie) => {
-    if (recommendationsBusyRef.current) return;
-    recommendationsBusyRef.current = true;
-    setRecommendationsBusy(true);
-    try {
-      await dismissMovieRequest(movie.id);
-      const next = new Set(dismissedIdsRef.current).add(movie.id);
-      dismissedIdsRef.current = next;
-      setDismissedIds(next);
-      setLastDismissed(movie);
-      if (recommendationsRef.current.length > 0 && recommendationsRef.current.every(
-        (item) => next.has(item.id) || reviewedIdsRef.current.has(item.id),
-      )) {
-        refreshRecommendations();
-      }
-    } finally {
-      recommendationsBusyRef.current = false;
-      setRecommendationsBusy(false);
+  const refreshIfExhausted = useCallback((type: MediaType) => {
+    const movies = batches.current[type].movies;
+    if (movies.length > 0 && movies.every((m) =>
+      reviewedIdsRef.current.has(contentKey(m)) || dismissedIdsRef.current.has(contentKey(m)))) {
+      refreshRecommendations(type);
     }
   }, [refreshRecommendations]);
 
-  const undoDismissal = useCallback(async () => {
-    if (!lastDismissed || recommendationsBusyRef.current) return;
-    recommendationsBusyRef.current = true;
-    setRecommendationsBusy(true);
+  const dismissMovie = useCallback(async (movie: Movie) => {
+    if (busyRef.current) return;
+    busyRef.current = true; setRecommendationsBusy(true);
     try {
-      await undoMovieDismissal(lastDismissed.id);
-      const next = new Set(dismissedIdsRef.current);
-      next.delete(lastDismissed.id);
-      dismissedIdsRef.current = next;
-      setDismissedIds(next);
-      // Si ya cambiamos de lote, reincorporamos la película al deshacer.
-      await pendingRequestRef.current?.catch(() => undefined);
-      if (!recommendationsRef.current.some((movie) => movie.id === lastDismissed.id)) {
-        recommendationsRef.current = [lastDismissed, ...recommendationsRef.current].slice(0, 10);
-        recommendationsLoadedAtRef.current = Date.now();
-        setRecommendationsVersion((current) => current + 1);
+      await dismissMovieRequest(movie.id, mediaTypeOf(movie));
+      const next = new Set(dismissedIdsRef.current).add(contentKey(movie));
+      dismissedIdsRef.current = next; setDismissedIds(next); setLastDismissed(movie);
+      refreshIfExhausted(mediaTypeOf(movie));
+    } finally { busyRef.current = false; setRecommendationsBusy(false); }
+  }, [refreshIfExhausted]);
+
+  const undoDismissal = useCallback(async () => {
+    if (!lastDismissed || busyRef.current) return;
+    busyRef.current = true; setRecommendationsBusy(true);
+    try {
+      const type = mediaTypeOf(lastDismissed);
+      await undoMovieDismissal(lastDismissed.id, type);
+      const next = new Set(dismissedIdsRef.current); next.delete(contentKey(lastDismissed));
+      dismissedIdsRef.current = next; setDismissedIds(next);
+      const batch = batches.current[type];
+      await batch.pending?.catch(() => undefined);
+      if (!batch.movies.some((m) => contentKey(m) === contentKey(lastDismissed))) {
+        batch.movies = [lastDismissed, ...batch.movies].slice(0, 10);
+        batch.loadedAt = Date.now();
+        setRecommendationsVersion((v) => v + 1);
       }
       setLastDismissed(null);
-    } finally {
-      recommendationsBusyRef.current = false;
-      setRecommendationsBusy(false);
-    }
+    } finally { busyRef.current = false; setRecommendationsBusy(false); }
   }, [lastDismissed]);
-
   const clearDismissalNotice = useCallback(() => setLastDismissed(null), []);
 
   const toggleFavorite = useCallback(async (movie: Movie) => {
-    const wasSaved = favoriteIdsRef.current.has(movie.id);
-
-    if (wasSaved) {
-      await removeFavorite(movie.id);
-    } else {
-      await saveFavorite(movie);
-    }
-
-    const nextIds = new Set(favoriteIdsRef.current);
-    let nextMovies = favoriteMoviesRef.current;
-    if (wasSaved) {
-      nextIds.delete(movie.id);
-      nextMovies = nextMovies.filter((favorite) => favorite.tmdbId !== movie.id);
-    } else {
-      nextIds.add(movie.id);
-      nextMovies = [
-        {
-          tmdbId: movie.id,
-          titulo: movie.title,
-          posterPath: movie.poster_path,
-        },
-        ...nextMovies.filter((favorite) => favorite.tmdbId !== movie.id),
-      ];
-    }
-
-    favoriteIdsRef.current = nextIds;
-    favoriteMoviesRef.current = nextMovies;
-    setFavoriteIds(nextIds);
-    setFavoriteMovies(nextMovies);
-    return !wasSaved;
+    const key = contentKey(movie);
+    const wasSaved = favoritesRef.current.some((f) => contentKey(f) === key);
+    if (favoriteMutations.current.has(key)) return wasSaved;
+    favoriteMutations.current.add(key);
+    try {
+      if (wasSaved) await removeFavorite(movie.id, mediaTypeOf(movie));
+      else await saveFavorite(movie);
+      favoriteChanges.current.add(key);
+      const remaining = favoritesRef.current.filter((f) => contentKey(f) !== key);
+      const next = wasSaved ? remaining : [{
+        tmdbId: movie.id, mediaType: mediaTypeOf(movie), titulo: movie.title, posterPath: movie.poster_path,
+      }, ...remaining];
+      favoritesRef.current = next;
+      setFavoriteMovies(next); setFavoriteIds(new Set(next.map(contentKey)));
+      return !wasSaved;
+    } finally { favoriteMutations.current.delete(key); }
   }, []);
 
   const recordReview = useCallback(async (review: ProfileReview) => {
-    const nextReviewedIds = new Set(reviewedIdsRef.current);
-    nextReviewedIds.add(review.tmdbId);
-    reviewedIdsRef.current = nextReviewedIds;
-    setReviews((current) => [
-      review,
-      ...current.filter((item) => item.tmdbId !== review.tmdbId),
-    ]);
+    const key = contentKey(review);
+    reviewChanges.current.add(key);
+    reviewedIdsRef.current = new Set(reviewedIdsRef.current).add(key);
+    setReviews((current) => orderReviews([review, ...current.filter((r) => contentKey(r) !== key)]));
+    refreshIfExhausted(mediaTypeOf(review));
+    try { await saveProfileReview(await getAccountStorageKey(), review); }
+    catch { console.warn('No se pudo actualizar la copia local de la reseña'); }
+  }, [refreshIfExhausted]);
 
-    const exhaustedCurrentBatch = recommendationsRef.current.length > 0
-      && recommendationsRef.current.every((movie) =>
-        nextReviewedIds.has(movie.id) || dismissedIdsRef.current.has(movie.id));
-    if (exhaustedCurrentBatch) {
-      refreshRecommendations();
-    }
-
-    try {
-      await saveProfileReview(reviewAccountRef.current, review);
-    } catch (error) {
-      console.warn('La reseña se publicó, pero no pudo guardarse en el perfil local', error);
-    }
+  const unmarkAsWatched = useCallback(async (tmdbId: number, type: MediaType = 'movie') => {
+    await deleteReview(tmdbId, type);
+    const key = contentKey({ tmdbId, mediaType: type });
+    reviewChanges.current.add(key);
+    const next = new Set(reviewedIdsRef.current); next.delete(key); reviewedIdsRef.current = next;
+    setReviews((current) => current.filter((r) => contentKey(r) !== key));
+    try { await deleteProfileReview(await getAccountStorageKey(), tmdbId, type); }
+    catch { console.warn('No se pudo actualizar la copia local del historial'); }
+    refreshRecommendations(type);
   }, [refreshRecommendations]);
 
-  const unmarkAsWatched = useCallback(async (tmdbId: number) => {
-    await deleteReview(tmdbId);
-    const nextReviewedIds = new Set(reviewedIdsRef.current);
-    nextReviewedIds.delete(tmdbId);
-    reviewedIdsRef.current = nextReviewedIds;
-    setReviews((current) => current.filter((review) => review.tmdbId !== tmdbId));
-    try {
-      await deleteProfileReview(reviewAccountRef.current, tmdbId);
-    } catch (error) {
-      console.warn('La película se quitó del perfil, pero falló la copia local', error);
-    }
-    refreshRecommendations();
-  }, [refreshRecommendations]);
-
-  const reviewedIds = new Set(reviews.map((review) => review.tmdbId));
-
-  return (
-    <AppExperienceContext.Provider
-      value={{
-        favoriteIds,
-        favoriteMovies,
-        loadRecommendations,
-        recordReview,
-        recommendationsVersion,
-        refreshRecommendations,
-        renewRecommendations,
-        dismissMovie,
-        undoDismissal,
-        clearDismissalNotice,
-        dismissedIds,
-        lastDismissed,
-        recommendationsBusy,
-        reviewedIds,
-        reviews,
-        toggleFavorite,
-        unmarkAsWatched,
-        username,
-        photoUri,
-        setProfilePhoto,
-      }}
-    >
-      {children}
-    </AppExperienceContext.Provider>
-  );
+  return <AppExperienceContext.Provider value={{
+    favoriteIds, favoriteMovies, loadRecommendations, recordReview, recommendationsVersion, recommendationNotices,
+    refreshRecommendations, renewRecommendations, dismissMovie, undoDismissal, clearDismissalNotice,
+    dismissedIds, lastDismissed, recommendationsBusy, reviewedIds: new Set(reviews.map(contentKey)),
+    reviews, toggleFavorite, unmarkAsWatched, username, photoUri, setProfilePhoto,
+  }}>{children}</AppExperienceContext.Provider>;
 }
 
 export function useAppExperience(): AppExperienceValue {
   const context = useContext(AppExperienceContext);
-  if (!context) {
-    throw new Error('useAppExperience debe usarse dentro de AppExperienceProvider');
-  }
+  if (!context) throw new Error('useAppExperience debe usarse dentro de AppExperienceProvider');
   return context;
 }

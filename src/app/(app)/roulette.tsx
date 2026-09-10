@@ -19,9 +19,18 @@ import { ApiFailure, describeApiError } from '../../api/errors';
 import { clearSession } from '../../auth/session';
 import { ReviewComposer } from '../../components/reviews/review-composer';
 import { useAppExperience } from '../../context/app-experience';
-import type { Movie } from '../../types/movie';
+import { contentKey, type MediaType, type Movie } from '../../types/movie';
+import { ContentTypeTabs } from '../../components/content-type-tabs';
 
 export default function RouletteScreen() {
+  const [mediaType, setMediaType] = useState<MediaType>('movie');
+  return <SafeAreaView edges={['top']} style={styles.resultSafeArea}>
+    <View style={{ paddingHorizontal: 16, paddingVertical: 6 }}><ContentTypeTabs value={mediaType} onChange={setMediaType} /></View>
+    <RouletteContent key={mediaType} mediaType={mediaType} />
+  </SafeAreaView>;
+}
+
+function RouletteContent({ mediaType }: { mediaType: MediaType }) {
   const router = useRouter();
   const { width } = useWindowDimensions();
   const {
@@ -41,10 +50,12 @@ export default function RouletteScreen() {
   const [spinning, setSpinning] = useState(false);
   const [reviewMovie, setReviewMovie] = useState<Movie | null>(null);
   const spinValue = useRef(new Animated.Value(0)).current;
-  const eligibleMovies = movies.filter((movie) => !reviewedIds.has(movie.id) && !dismissedIds.has(movie.id));
+  const eligibleMovies = movies.filter((movie) => !reviewedIds.has(contentKey(movie)) && !dismissedIds.has(contentKey(movie)));
+  const eligibleRef = useRef(eligibleMovies);
+  eligibleRef.current = eligibleMovies;
 
   useEffect(() => {
-    if (selected && (dismissedIds.has(selected.id) || reviewedIds.has(selected.id)) && !reviewMovie) {
+    if (selected && (dismissedIds.has(contentKey(selected)) || reviewedIds.has(contentKey(selected))) && !reviewMovie) {
       setSelected(null);
     }
   }, [dismissedIds, reviewedIds, reviewMovie, selected]);
@@ -58,7 +69,7 @@ export default function RouletteScreen() {
     setSpinning(false);
     spinValue.stopAnimation();
 
-    loadRecommendations()
+    loadRecommendations(mediaType)
       .then((results) => {
         if (mounted) {
           setMovies(results.slice(0, 10));
@@ -79,7 +90,7 @@ export default function RouletteScreen() {
       mounted = false;
       spinValue.stopAnimation();
     };
-  }, [loadRecommendations, recommendationsVersion, spinValue]);
+  }, [loadRecommendations, recommendationsVersion, spinValue, mediaType]);
 
   const chooseMovie = () => {
     if (eligibleMovies.length === 0 || spinning) {
@@ -97,9 +108,11 @@ export default function RouletteScreen() {
       useNativeDriver: true,
     }).start(({ finished }) => {
       if (!finished) return;
-      const available = previousSelection && eligibleMovies.length > 1
-        ? eligibleMovies.filter((movie) => movie.id !== previousSelection.id)
-        : eligibleMovies;
+      const currentEligible = eligibleRef.current;
+      const available = previousSelection && currentEligible.length > 1
+        ? currentEligible.filter((movie) => contentKey(movie) !== contentKey(previousSelection))
+        : currentEligible;
+      if (available.length === 0) { setSpinning(false); return; }
       const nextMovie = available[Math.floor(Math.random() * available.length)];
       setSelected(nextMovie);
       setSpinning(false);
@@ -111,7 +124,7 @@ export default function RouletteScreen() {
       await toggleFavorite(movie);
     } catch {
       Alert.alert(
-        favoriteIds.has(movie.id) ? 'No se pudo quitar' : 'No se pudo guardar',
+        favoriteIds.has(contentKey(movie)) ? 'No se pudo quitar' : 'No se pudo guardar',
         'Intentá nuevamente en unos segundos.',
       );
     }
@@ -127,7 +140,7 @@ export default function RouletteScreen() {
     setFailure(null);
     setLoading(true);
     try {
-      setMovies(await loadRecommendations());
+      setMovies(await loadRecommendations(mediaType));
     } catch (error) {
       setFailure(describeApiError(error));
     } finally {
@@ -162,13 +175,13 @@ export default function RouletteScreen() {
     const hasRating = typeof selected.vote_average === 'number' && selected.vote_average > 0;
 
     return (
-      <SafeAreaView edges={['top']} style={styles.resultSafeArea}>
+      <SafeAreaView edges={[]} style={styles.resultSafeArea}>
         <ScrollView contentContainerStyle={styles.resultContent} showsVerticalScrollIndicator={false}>
           <View style={styles.resultBadge}>
             <Ionicons color="#f6c85f" name="sparkles" size={16} />
             <Text style={styles.resultBadgeText}>LA RULETA ELIGIÓ</Text>
           </View>
-          <Text style={styles.resultHeading}>Esta peli es para vos</Text>
+          <Text style={styles.resultHeading}>{mediaType === 'tv' ? 'Esta serie es para vos' : 'Esta peli es para vos'}</Text>
 
           {selected.poster_path ? (
             <Image
@@ -198,11 +211,11 @@ export default function RouletteScreen() {
             >
               <Ionicons
                 color="#fff"
-                name={favoriteIds.has(selected.id) ? 'bookmark' : 'bookmark-outline'}
+                name={favoriteIds.has(contentKey(selected)) ? 'bookmark' : 'bookmark-outline'}
                 size={20}
               />
               <Text style={styles.secondaryActionText}>
-                {favoriteIds.has(selected.id) ? 'Guardada' : 'Guardar'}
+                {favoriteIds.has(contentKey(selected)) ? 'Guardada' : 'Guardar'}
               </Text>
             </Pressable>
             <Pressable
@@ -211,11 +224,11 @@ export default function RouletteScreen() {
             >
               <Ionicons
                 color="#fff"
-                name={reviewedIds.has(selected.id) ? 'create-outline' : 'eye-outline'}
+                name={reviewedIds.has(contentKey(selected)) ? 'create-outline' : 'eye-outline'}
                 size={20}
               />
               <Text style={styles.primaryActionText}>
-                {reviewedIds.has(selected.id) ? 'Editar reseña' : 'La vi'}
+                {reviewedIds.has(contentKey(selected)) ? 'Editar reseña' : 'La vi'}
               </Text>
             </Pressable>
           </View>
@@ -230,7 +243,7 @@ export default function RouletteScreen() {
           </Pressable>
         </ScrollView>
         <ReviewComposer
-          existingReview={reviews.find((review) => review.tmdbId === reviewMovie?.id) ?? null}
+          existingReview={reviewMovie ? reviews.find((review) => contentKey(review) === contentKey(reviewMovie)) ?? null : null}
           movie={reviewMovie}
           onClose={() => setReviewMovie(null)}
           onSubmitted={recordReview}
@@ -245,11 +258,11 @@ export default function RouletteScreen() {
   });
 
   return (
-    <View style={styles.intro}>
+    <ScrollView style={{ flex: 1, backgroundColor: '#090909' }} contentContainerStyle={[styles.intro, { flex: undefined, flexGrow: 1, paddingVertical: 24 }]}>
       <Text style={styles.eyebrow}>NO DES MÁS VUELTAS</Text>
       <Text style={styles.title}>La Cine-Ruleta decide por vos.</Text>
       <Text style={styles.description}>
-        Elegiremos una película entre tus recomendaciones actuales.
+        Elegiremos {mediaType === 'tv' ? 'una serie' : 'una película'} entre tus recomendaciones actuales.
       </Text>
 
       <Animated.View style={[styles.wheel, { transform: [{ rotate: rotation }] }]}>
@@ -273,7 +286,7 @@ export default function RouletteScreen() {
           No quedan opciones en este lote. Pedí Otras 10 en Para vos o ampliá tus gustos.
         </Text>
       ) : null}
-    </View>
+    </ScrollView>
   );
 }
 

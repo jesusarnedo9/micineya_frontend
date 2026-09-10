@@ -190,7 +190,7 @@ export default function OnboardingScreen() {
           <Text style={styles.welcomeEyebrow}>TODO LISTO</Text>
           <Text style={styles.welcomeTitle}>Dejá de dar vueltas y disfrutá</Text>
           <Text style={styles.welcomeMessage}>
-            En base a tus plataformas y gustos, te recomendamos solo 10 pelis. Si no sabés cuál
+            Elegí Películas o Series: te mostramos hasta 10 opciones según tus plataformas y gustos. Si no sabés cuál
             elegir, la ruleta decide por vos.
           </Text>
 
@@ -200,7 +200,7 @@ export default function OnboardingScreen() {
               onPress={() => router.replace('/(app)')}
               style={({ pressed }) => [styles.primaryButton, pressed && styles.buttonPressed]}
             >
-              <Text style={styles.primaryButtonText}>Ver mis 10 pelis</Text>
+              <Text style={styles.primaryButtonText}>Ver recomendaciones</Text>
               <Ionicons color="#fff" name="arrow-forward" size={20} />
             </Pressable>
 

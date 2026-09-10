@@ -7,6 +7,7 @@ import { describeApiError } from '../../api/errors';
 import { removeProfilePhoto, saveProfilePhoto } from '../../api/profile';
 import { useAppExperience } from '../../context/app-experience';
 import { ProfileAvatar } from './profile-avatar';
+import { ensureCommunityParticipation } from '../community/community-rules';
 
 export function ProfilePhotoPicker() {
   const { photoUri, username, setProfilePhoto } = useAppExperience();
@@ -23,6 +24,7 @@ export function ProfilePhotoPicker() {
         setProfilePhoto(null);
         return;
       }
+      if (!await ensureCommunityParticipation()) return;
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'], allowsEditing: true, aspect: [1, 1], quality: 1,
       });

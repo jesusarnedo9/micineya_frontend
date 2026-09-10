@@ -142,10 +142,20 @@ npx eas-cli build --platform android --profile preview
 
 ## Estado del proyecto
 
+Series integradas en el código del próximo release: Películas/Series en Para vos y ruleta, perfil mixto,
+una reseña por serie y temporadas completas que suman pochoclos. Requiere desplegar primero el backend compatible.
+Ver [alcance y prueba del release](docs/releases/1.2-series.md). Pendiente probar el flujo integrado en el teléfono y generar el nuevo APK.
+
+Primera etapa de gamificación: [salón de pochoclos](docs/releases/1.1-pochoclos.md), un balde por cada diez películas distintas, caída animada y colección visible en el perfil público. Mi perfil reúne preferencias desplegables y las secciones Vistas, Guardadas y Logros. Las opciones de cuenta, bloqueados y normas están en el engranaje de Configuración.
+
+El siguiente release agrega **Comunidad**: búsqueda por username, seguir personas, perfiles públicos, feed de reseñas y puntuaciones de seguidos, spoilers, bloqueos y reportes. Las guardadas y preferencias siguen siendo privadas. Antes de compartir el perfil y sus reseñas se solicita aceptar las normas de convivencia.
+
+El panel de moderación solo aparece para cuentas habilitadas en el backend con `MODERATOR_USER_IDS`. Ver [notas de integración de Comunidad](docs/releases/1.1-comunidad.md). Falta probar estas novedades en el próximo APK; no forman parte del APK anterior.
+
 El MVP para Android está completo y permite recorrer el flujo principal de punta a punta. Las siguientes ideas quedan fuera del alcance actual y forman parte de una posible evolución:
 
 - Verificación de correo y recuperación de contraseña.
-- Recomendaciones de series y filtros por tipo de contenido.
+- Seguimiento por episodio e insignias por completar una serie.
 - Preferencias basadas en actores y directores.
 - Mejoras de precarga y disponibilidad de trailers.
 - Adaptación específica para iOS y una futura versión web.

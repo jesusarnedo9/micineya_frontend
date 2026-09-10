@@ -1,9 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppExperienceProvider } from '../../context/app-experience';
 
 export default function AppLayout() {
+  const insets = useSafeAreaInsets();
+  const bottomSpace = Math.max(insets.bottom, 8);
   return (
     <AppExperienceProvider>
       <Tabs
@@ -13,11 +16,13 @@ export default function AppLayout() {
         tabBarActiveTintColor: '#e50914',
         tabBarInactiveTintColor: '#888',
         tabBarLabelStyle: { fontSize: 11, fontWeight: '700' },
+        tabBarLabelPosition: 'below-icon',
         tabBarStyle: {
           backgroundColor: '#090909',
           borderTopColor: '#222',
-          height: 66,
-          paddingBottom: 8,
+          // Reservar espacio fuera de los botones para gestos o navegación de tres botones.
+          height: 58 + bottomSpace,
+          paddingBottom: bottomSpace,
           paddingTop: 7,
         },
       }}
@@ -45,6 +50,13 @@ export default function AppLayout() {
         options={{
           href: null,
         }}
+        />
+        <Tabs.Screen
+          name="community"
+          options={{
+            title: 'Comunidad',
+            tabBarIcon: ({ color, size }) => <Ionicons color={color} name="people-outline" size={size} />,
+          }}
         />
         <Tabs.Screen
         name="profile"

@@ -98,7 +98,7 @@ export default function LoginScreen() {
             </View>
           </View>
           <Text style={styles.brand}>MICINEYA</Text>
-          <Text style={styles.title}>Volvé a tu próxima película</Text>
+          <Text style={styles.title}>Volvé a tu próxima historia</Text>
           <Text style={styles.subtitle}>
             Ingresá tu usuario o correo.
           </Text>

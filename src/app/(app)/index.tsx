@@ -3,15 +3,19 @@ import { useAppExperience } from '../../context/app-experience';
 import { Ionicons } from '@expo/vector-icons';
 import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
 import { describeApiError } from '../../api/errors';
+import { useCallback, useState } from 'react';
+import { ContentTypeTabs } from '../../components/content-type-tabs';
+import { mediaTypeOf, type MediaType } from '../../types/movie';
 
 export default function RecommendedScreen() {
-  const router = useRouter();
+  const [mediaType, setMediaType] = useState<MediaType>('movie');
   const {
     loadRecommendations, recommendationsVersion, renewRecommendations,
     undoDismissal, clearDismissalNotice, lastDismissed, recommendationsBusy,
+    recommendationNotices,
   } = useAppExperience();
+  const loader = useCallback(() => loadRecommendations(mediaType), [loadRecommendations, mediaType]);
 
   const runAction = async (action: () => Promise<void>) => {
     try {
@@ -24,17 +28,14 @@ export default function RecommendedScreen() {
 
   return (
     <SafeAreaView edges={['top']} style={styles.screen}>
+      <View style={{ paddingHorizontal: 16, paddingTop: 6 }}><ContentTypeTabs value={mediaType} onChange={setMediaType} /></View>
       <View style={styles.toolbar}>
-        <Pressable accessibilityRole="button" onPress={() => router.push('/(app)/profile')} style={styles.preferences}>
-          <Ionicons name="options-outline" color="#bbb" size={18} />
-          <Text style={styles.secondaryText}>Tus gustos</Text>
-        </Pressable>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Mostrarme otras diez recomendaciones"
           accessibilityState={{ disabled: recommendationsBusy, busy: recommendationsBusy }}
           disabled={recommendationsBusy}
-          onPress={() => void runAction(renewRecommendations)}
+          onPress={() => void runAction(() => renewRecommendations(mediaType))}
           style={[styles.refresh, recommendationsBusy && styles.disabled]}
         >
           {recommendationsBusy ? <ActivityIndicator color="#ff9ba0" size="small" />
@@ -42,7 +43,8 @@ export default function RecommendedScreen() {
           <Text style={styles.refreshText}>{recommendationsBusy ? 'Un momento...' : 'Otras 10'}</Text>
         </Pressable>
       </View>
-      {lastDismissed ? (
+      {!!recommendationNotices[mediaType] && <Text style={{ color: '#d4b67b', fontSize: 11, paddingHorizontal: 16, paddingBottom: 8 }}>{recommendationNotices[mediaType]}</Text>}
+      {lastDismissed && mediaTypeOf(lastDismissed) === mediaType ? (
         <View style={styles.notice}>
           <View style={styles.noticeCopy}>
             <Text numberOfLines={1} style={styles.noticeTitle}>{lastDismissed.title}</Text>
@@ -59,10 +61,12 @@ export default function RecommendedScreen() {
         </View>
       ) : null}
       <MovieReelFeed
-        key={recommendationsVersion}
-        emptyMessage="No encontramos más películas con estos gustos y plataformas. Podés probar Otras 10 o ampliar tus gustos desde el perfil."
-        label="Para vos"
-        loader={loadRecommendations}
+        key={`${mediaType}:${recommendationsVersion}`}
+        emptyMessage={mediaType === 'tv'
+          ? 'No encontramos más series con estos gustos y plataformas. Algunos géneros, como Terror o Romance, no tienen equivalente en series en TMDB. Podés agregar géneros desde Mi perfil o pedir Otras 10.'
+          : 'No encontramos más películas con estos gustos y plataformas. Podés probar Otras 10 o ampliar tus preferencias desde Mi perfil.'}
+        label={mediaType === 'tv' ? 'Series para vos' : 'Para vos'}
+        loader={loader}
         maxItems={10}
         allowDismiss
       />
@@ -72,8 +76,7 @@ export default function RecommendedScreen() {
 
 const styles = StyleSheet.create({
   screen: { backgroundColor: '#000', flex: 1 },
-  toolbar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 6 },
-  preferences: { flexDirection: 'row', alignItems: 'center', gap: 7, minHeight: 44 },
+  toolbar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', paddingHorizontal: 16, paddingVertical: 6 },
   secondaryText: { color: '#bbb', fontSize: 12 },
   refresh: { flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: '#241b1e', paddingHorizontal: 15, minHeight: 44, borderRadius: 22 },
   refreshText: { color: '#ff9ba0', fontSize: 13, fontWeight: '800' },

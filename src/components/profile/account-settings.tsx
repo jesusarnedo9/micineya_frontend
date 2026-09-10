@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { useRouter } from 'expo-router';
 import {
   ActivityIndicator, Alert, KeyboardAvoidingView, Modal, Platform, Pressable,
@@ -10,12 +10,17 @@ import { changePassword, deleteAccount } from '../../api/profile';
 import { describeApiError } from '../../api/errors';
 import { clearSession, forgetLogin, getAccountStorageAliases } from '../../auth/session';
 import { clearProfileReviews } from '../../profile/review-storage';
+import { clearPopcornProgress } from '../../profile/popcorn-storage';
+import { BlockedAccounts } from './blocked-accounts';
+import { COMMUNITY_RULES } from '../community/community-rules';
 
-type Action = 'password' | 'delete';
+type Action = 'password' | 'delete' | 'blocked';
 
-export function AccountSettings() {
+export function AccountSettings({ compact = false, showCommunity = false, onLogout }: {
+  compact?: boolean; showCommunity?: boolean; onLogout?: () => void;
+}) {
   const router = useRouter();
-  const [expanded, setExpanded] = useState(false);
+  const [open, setOpen] = useState(false);
   const [action, setAction] = useState<Action | null>(null);
   const [current, setCurrent] = useState('');
   const [next, setNext] = useState('');
@@ -23,6 +28,7 @@ export function AccountSettings() {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
+  const changeBusy = useCallback((value: boolean) => { busyRef.current = value; setBusy(value); }, []);
   const deleting = action === 'delete';
   const valid = current.length > 0 && (deleting
     ? confirmation === 'ELIMINAR' : next.length >= 8 && next === confirmation);
@@ -37,7 +43,7 @@ export function AccountSettings() {
   };
 
   const submit = async () => {
-    if (!action || !valid || busyRef.current) return;
+    if ((action !== 'password' && action !== 'delete') || !valid || busyRef.current) return;
     busyRef.current = true;
     setBusy(true);
     setError('');
@@ -49,9 +55,10 @@ export function AccountSettings() {
 
       const cleanup = await Promise.allSettled([
         clearSession(),
-        ...(deleting ? [forgetLogin(), ...aliases.map(clearProfileReviews)] : []),
+        ...(deleting ? [forgetLogin(), ...aliases.map(clearProfileReviews), ...aliases.map(clearPopcornProgress)] : []),
       ]);
       setAction(null);
+      setOpen(false);
       setCurrent('');
       setNext('');
       setConfirmation('');
@@ -73,33 +80,40 @@ export function AccountSettings() {
   };
 
   return (
-    <View style={styles.panel}>
-      <Pressable accessibilityRole="button" accessibilityState={{ expanded }} onPress={() => setExpanded(!expanded)} style={styles.row}>
-        <Ionicons name="shield-checkmark-outline" size={20} color="#ff9ba0" />
-        <Text style={styles.heading}>Tu cuenta</Text>
-        <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={18} color="#aaa" />
+    <View style={compact ? undefined : styles.panel}>
+      <Pressable accessibilityRole="button" accessibilityLabel="Abrir configuración" onPress={() => setOpen(true)} style={compact ? styles.gear : styles.row}>
+        <Ionicons name="settings-outline" size={23} color="#ff9ba0" />
+        {!compact && <Text style={styles.heading}>Configuración</Text>}
       </Pressable>
-      {expanded ? (
-        <View>
-          <Pressable accessibilityRole="button" onPress={() => setAction('password')} style={styles.row}>
-            <Ionicons name="key-outline" size={18} color="#ddd" /><Text style={styles.option}>Cambiar contraseña</Text>
-          </Pressable>
-          <Pressable accessibilityRole="button" onPress={() => setAction('delete')} style={styles.row}>
-            <Ionicons name="trash-outline" size={18} color="#ff9299" /><Text style={styles.danger}>Eliminar cuenta</Text>
-          </Pressable>
-        </View>
-      ) : null}
-      <Modal visible={action !== null} transparent animationType="slide" onRequestClose={close}>
+      <Modal visible={open} transparent animationType="slide" onRequestClose={() => { if (action) close(); else setOpen(false); }}>
         <SafeAreaView style={styles.backdrop}>
           <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.keyboard}>
             <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.modalScroll}>
               <View style={styles.sheet}>
                 <View style={styles.titleRow}>
-                  <Text style={styles.title}>{deleting ? 'Eliminar cuenta' : 'Cambiar contraseña'}</Text>
-                  <Pressable accessibilityRole="button" accessibilityLabel="Cerrar" disabled={busy} onPress={close} style={styles.close}>
-                    <Ionicons name="close" size={24} color="#ccc" />
+                  <Text style={styles.title}>{action === 'blocked' ? 'Cuentas bloqueadas' : action ? (deleting ? 'Eliminar cuenta' : 'Cambiar contraseña') : 'Configuración'}</Text>
+                  <Pressable accessibilityRole="button" accessibilityLabel={action ? 'Volver a configuración' : 'Cerrar configuración'} disabled={busy} onPress={() => { if (action) close(); else setOpen(false); }} style={styles.close}>
+                    <Ionicons name={action ? 'arrow-back' : 'close'} size={24} color="#ccc" />
                   </Pressable>
                 </View>
+                {action === null ? <>
+                  <Text style={styles.description}>Las opciones de tu cuenta y de Comunidad, en un solo lugar.</Text>
+                  {showCommunity && <Pressable accessibilityRole="button" onPress={() => setAction('blocked')} style={styles.row}>
+                    <Ionicons name="ban-outline" size={20} color="#ddd" /><Text style={styles.option}>Cuentas bloqueadas</Text>
+                  </Pressable>}
+                  <Pressable accessibilityRole="button" onPress={() => setAction('password')} style={styles.row}>
+                    <Ionicons name="key-outline" size={20} color="#ddd" /><Text style={styles.option}>Cambiar contraseña</Text>
+                  </Pressable>
+                  <Pressable accessibilityRole="button" onPress={() => Alert.alert('Normas de Comunidad', COMMUNITY_RULES)} style={styles.row}>
+                    <Ionicons name="shield-checkmark-outline" size={20} color="#ddd" /><Text style={styles.option}>Normas de Comunidad</Text>
+                  </Pressable>
+                  {onLogout && <Pressable accessibilityRole="button" onPress={() => { setOpen(false); onLogout(); }} style={styles.row}>
+                    <Ionicons name="log-out-outline" size={20} color="#ddd" /><Text style={styles.option}>Cerrar sesión</Text>
+                  </Pressable>}
+                  <Pressable accessibilityRole="button" onPress={() => setAction('delete')} style={styles.row}>
+                    <Ionicons name="trash-outline" size={20} color="#ff9299" /><Text style={styles.danger}>Eliminar cuenta</Text>
+                  </Pressable>
+                </> : action === 'blocked' ? <BlockedAccounts onBusyChange={changeBusy} /> : <>
                 <Text style={styles.description}>{deleting
                   ? 'Se borrarán tu perfil, foto, preferencias, guardadas, puntuaciones, reseñas e historial de recomendaciones. Esta acción no se puede deshacer.'
                   : 'Para proteger tu cuenta, vamos a cerrar las sesiones abiertas. Después ingresá con tu nueva contraseña.'}</Text>
@@ -127,6 +141,7 @@ export function AccountSettings() {
                 <Pressable accessibilityRole="button" disabled={busy} onPress={close} style={styles.cancel}>
                   <Text style={styles.option}>Cancelar</Text>
                 </Pressable>
+                </>}
               </View>
             </ScrollView>
           </KeyboardAvoidingView>
@@ -137,6 +152,7 @@ export function AccountSettings() {
 }
 
 const styles = StyleSheet.create({
+  gear: { width: 46, height: 46, borderRadius: 23, borderWidth: 1, borderColor: '#70404a', alignItems: 'center', justifyContent: 'center', backgroundColor: '#30131b' },
   panel: { marginHorizontal: 18, marginTop: 16, backgroundColor: '#121012', borderColor: '#33272d', borderWidth: 1, borderRadius: 18 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 52, paddingHorizontal: 16, paddingVertical: 12 },
   heading: { color: '#fff', fontSize: 15, fontWeight: '800', flex: 1 },
