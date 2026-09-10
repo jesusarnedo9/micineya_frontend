@@ -42,3 +42,18 @@ export async function fetchFavorites(): Promise<FavoriteMovie[]> {
   const response = await apiClient.get<FavoriteMovie[]>('/api/users/favoritas');
   return response.data;
 }
+
+export async function renewMovies(actualesIds: number[]): Promise<Movie[]> {
+  const response = await apiClient.post<MovieResponse>('/api/peliculas/recomendadas/renovar', {
+    actualesIds,
+  });
+  return response.data.results ?? [];
+}
+
+export async function dismissMovie(tmdbId: number): Promise<void> {
+  await apiClient.put(`/api/peliculas/descartadas/${tmdbId}`);
+}
+
+export async function undoMovieDismissal(tmdbId: number): Promise<void> {
+  await apiClient.delete(`/api/peliculas/descartadas/${tmdbId}`);
+}

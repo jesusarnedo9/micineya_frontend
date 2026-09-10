@@ -18,6 +18,9 @@ import type { FavoriteMovie } from '../../api/movies';
 import { logoutFromServer } from '../../api/profile';
 import { ReviewComposer } from '../../components/reviews/review-composer';
 import { PreferencesPanel } from '../../components/profile/preferences-panel';
+import { AccountSettings } from '../../components/profile/account-settings';
+import { ProfileAvatar } from '../../components/profile/profile-avatar';
+import { ProfilePhotoPicker } from '../../components/profile/profile-photo-picker';
 import { useAppExperience } from '../../context/app-experience';
 import { clearSession } from '../../auth/session';
 import type { Movie } from '../../types/movie';
@@ -79,19 +82,19 @@ function WatchedCard({
   review,
   unmarking,
   username,
+  photoUri,
 }: {
   onEdit: () => void;
   onUnmark: () => void;
   review: ProfileReview;
   unmarking: boolean;
   username: string;
+  photoUri: string | null;
 }) {
   return (
     <View style={styles.reviewCard}>
       <View style={styles.reviewAuthorRow}>
-        <View style={styles.miniAvatar}>
-          <Text style={styles.miniAvatarText}>{username.charAt(0).toUpperCase()}</Text>
-        </View>
+        <ProfileAvatar uri={photoUri} username={username} size={34} />
         <View style={styles.reviewAuthorCopy}>
           <Text style={styles.reviewAuthor}>{username}</Text>
           <Text style={styles.reviewDate}>{formatReviewDate(review.reviewedAt)}</Text>
@@ -165,6 +168,7 @@ export default function ProfileScreen() {
     toggleFavorite,
     unmarkAsWatched,
     username,
+    photoUri,
   } = useAppExperience();
   const [section, setSection] = useState<ProfileSection>('watched');
   const [reviewMovie, setReviewMovie] = useState<Movie | null>(null);
@@ -277,11 +281,7 @@ export default function ProfileScreen() {
           </View>
 
           <View style={styles.identityRow}>
-            <View style={styles.avatarRing}>
-              <View style={styles.avatar}>
-                <Text style={styles.avatarText}>{username.charAt(0).toUpperCase()}</Text>
-              </View>
-            </View>
+            <ProfilePhotoPicker />
             <View style={styles.identityCopy}>
               <Text style={styles.welcome}>Tu cine personal</Text>
               <Text numberOfLines={1} style={styles.username}>{username}</Text>
@@ -312,6 +312,7 @@ export default function ProfileScreen() {
         </View>
 
         <PreferencesPanel onSaved={refreshRecommendations} />
+        <AccountSettings />
 
         <View style={styles.sectionSwitcher}>
           <Pressable
@@ -365,6 +366,7 @@ export default function ProfileScreen() {
                   review={review}
                   unmarking={unmarkingId === review.tmdbId}
                   username={username}
+                  photoUri={photoUri}
                 />
               ))
             ) : (
@@ -541,28 +543,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     marginTop: 18,
   },
-  avatarRing: {
-    alignItems: 'center',
-    borderColor: '#ff626a',
-    borderRadius: 38,
-    borderWidth: 1,
-    height: 76,
-    justifyContent: 'center',
-    width: 76,
-  },
-  avatar: {
-    alignItems: 'center',
-    backgroundColor: '#e51b2a',
-    borderRadius: 31,
-    height: 62,
-    justifyContent: 'center',
-    width: 62,
-  },
-  avatarText: {
-    color: '#fff',
-    fontSize: 29,
-    fontWeight: '900',
-  },
   identityCopy: {
     flex: 1,
     marginLeft: 15,
@@ -691,19 +671,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flexDirection: 'row',
     marginBottom: 13,
-  },
-  miniAvatar: {
-    alignItems: 'center',
-    backgroundColor: '#8f1320',
-    borderRadius: 17,
-    height: 34,
-    justifyContent: 'center',
-    width: 34,
-  },
-  miniAvatarText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '900',
   },
   reviewAuthorCopy: {
     flex: 1,

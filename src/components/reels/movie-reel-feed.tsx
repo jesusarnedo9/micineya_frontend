@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useFocusEffect, useRouter } from 'expo-router';
 import {
   ActivityIndicator,
@@ -28,6 +28,7 @@ interface MovieReelFeedProps {
   maxItems?: number;
   infinite?: boolean;
   emptyMessage?: string;
+  allowDismiss?: boolean;
 }
 
 interface Viewport {
@@ -41,6 +42,7 @@ export function MovieReelFeed({
   label,
   maxItems,
   infinite = false,
+  allowDismiss = false,
   emptyMessage = 'Todavía no encontramos películas para mostrar.',
 }: MovieReelFeedProps) {
   const router = useRouter();
@@ -49,6 +51,9 @@ export function MovieReelFeed({
     recordReview,
     reviewedIds,
     toggleFavorite,
+    dismissMovie,
+    dismissedIds,
+    recommendationsBusy,
   } = useAppExperience();
   const [movies, setMovies] = useState<Movie[]>([]);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -60,6 +65,19 @@ export function MovieReelFeed({
   const nextPageRef = useRef(2);
   const totalPagesRef = useRef<number | null>(null);
   const loadingMoreRef = useRef(false);
+  const listRef = useRef<FlatList<Movie>>(null);
+  const activeIndexRef = useRef(0);
+  activeIndexRef.current = activeIndex;
+  const visibleMovies = useMemo(() => allowDismiss
+    ? movies.filter((movie) => !dismissedIds.has(movie.id)) : movies, [movies, dismissedIds, allowDismiss]);
+
+  useEffect(() => {
+    const index = Math.min(activeIndexRef.current, Math.max(0, visibleMovies.length - 1));
+    setActiveIndex(index);
+    if (viewport.height > 0) {
+      listRef.current?.scrollToOffset({ offset: index * viewport.height, animated: false });
+    }
+  }, [visibleMovies, viewport.height]);
 
   useFocusEffect(
     useCallback(() => {
@@ -133,6 +151,15 @@ export function MovieReelFeed({
     }
   };
 
+  const handleDismiss = async (movie: Movie) => {
+    try {
+      await dismissMovie(movie);
+    } catch (error) {
+      const errorInfo = describeApiError(error);
+      Alert.alert(errorInfo.title, errorInfo.message);
+    }
+  };
+
   const appendMore = async () => {
     if (!infinite || !endpoint || loader || loadingMoreRef.current) {
       return;
@@ -191,7 +218,7 @@ export function MovieReelFeed({
     );
   }
 
-  if (movies.length === 0) {
+  if (visibleMovies.length === 0) {
     return (
       <View style={styles.centered}>
         <Text style={styles.errorTitle}>Sin resultados</Text>
@@ -201,10 +228,17 @@ export function MovieReelFeed({
   }
 
   return (
-    <View onLayout={handleLayout} style={styles.container}>
+    <View style={styles.container}>
+      {allowDismiss && movies.length < 10 ? (
+        <Text style={styles.catalogNotice}>
+          Encontramos {movies.length} opciones. Ampliá tus gustos para descubrir más.
+        </Text>
+      ) : null}
+      <View onLayout={handleLayout} style={styles.container}>
       {viewport.height > 0 && viewport.width > 0 ? (
         <FlatList
-          data={movies}
+          ref={listRef}
+          data={visibleMovies}
           decelerationRate="fast"
           disableIntervalMomentum
           getItemLayout={(_, index) => ({
@@ -213,7 +247,7 @@ export function MovieReelFeed({
             offset: viewport.height * index,
           })}
           initialNumToRender={3}
-          keyExtractor={(movie, index) => `${movie.id}-${index}`}
+          keyExtractor={(movie) => String(movie.id)}
           maxToRenderPerBatch={3}
           onEndReached={() => void appendMore()}
           onEndReachedThreshold={0.6}
@@ -222,11 +256,11 @@ export function MovieReelFeed({
           removeClippedSubviews={Platform.OS === 'android'}
           renderItem={({ item, index }) => (
             <MovieReel
-              active={screenFocused && reviewMovie === null && index === activeIndex}
+              active={screenFocused && !recommendationsBusy && reviewMovie === null && index === activeIndex}
               height={viewport.height}
               label={
                 maxItems
-                  ? `${label} · ${Math.min(index + 1, movies.length)}/${movies.length}`
+                  ? `${label} · ${index + 1}/${visibleMovies.length}`
                   : label
               }
               mountVideo={
@@ -236,6 +270,8 @@ export function MovieReelFeed({
               }
               movie={item}
               onReview={setReviewMovie}
+              onDismiss={allowDismiss ? (movie) => void handleDismiss(movie) : undefined}
+              dismissDisabled={recommendationsBusy}
               onSave={(movie) => void handleSave(movie)}
               reviewed={reviewedIds.has(item.id)}
               saved={favoriteIds.has(item.id)}
@@ -255,11 +291,13 @@ export function MovieReelFeed({
         onClose={() => setReviewMovie(null)}
         onSubmitted={recordReview}
       />
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  catalogNotice: { color: '#d4b67b', fontSize: 12, paddingHorizontal: 18, paddingVertical: 8, backgroundColor: '#19150f' },
   container: {
     backgroundColor: '#000',
     flex: 1,

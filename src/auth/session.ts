@@ -38,7 +38,7 @@ export async function getRememberedLogin(): Promise<string | null> {
     || getRememberedEmail();
 }
 
-function readTokenSubject(token: string): string | null {
+function readTokenPayload(token: string): { sub?: string; uid?: number } | null {
   try {
     const encodedPayload = token.split('.')[1];
     const normalizedPayload = encodedPayload.replace(/-/g, '+').replace(/_/g, '/');
@@ -46,11 +46,14 @@ function readTokenSubject(token: string): string | null {
       normalizedPayload.length + ((4 - (normalizedPayload.length % 4)) % 4),
       '=',
     );
-    const payload = JSON.parse(globalThis.atob(paddedPayload)) as { sub?: string };
-    return payload.sub?.trim() || null;
+    return JSON.parse(globalThis.atob(paddedPayload)) as { sub?: string; uid?: number };
   } catch {
     return null;
   }
+}
+
+function readTokenSubject(token: string): string | null {
+  return readTokenPayload(token)?.sub?.trim() || null;
 }
 
 export async function getProfileName(): Promise<string> {
@@ -72,12 +75,27 @@ export async function getProfileName(): Promise<string> {
 
 export async function getAccountStorageKey(): Promise<string> {
   const token = await getToken();
+  const id = token ? readTokenPayload(token)?.uid : null;
+  if (id != null) return `account_${id}`;
   const subject = token ? readTokenSubject(token) : null;
   if (subject) {
     return subject;
   }
 
   return (await getUsername()) || 'current_user';
+}
+
+export async function getAccountStorageAliases(): Promise<string[]> {
+  const token = await getToken();
+  const subject = token ? readTokenSubject(token) : null;
+  return Array.from(new Set([await getAccountStorageKey(), subject].filter((key): key is string => Boolean(key))));
+}
+
+export async function forgetLogin(): Promise<void> {
+  await Promise.all([
+    SecureStore.deleteItemAsync(REMEMBERED_EMAIL_KEY),
+    SecureStore.deleteItemAsync(REMEMBERED_LOGIN_KEY),
+  ]);
 }
 
 export async function saveSession(

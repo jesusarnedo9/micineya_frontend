@@ -30,7 +30,7 @@ export function describeApiError(error: unknown): ApiFailure {
 
   if (error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT') {
     return {
-      title: 'Render sigue despertando',
+      title: 'La conexión está tardando',
       message: 'El servidor tardó demasiado en responder. Esperá unos segundos y reintentá.',
       requiresLogin: false,
     };
@@ -52,9 +52,8 @@ export function describeApiError(error: unknown): ApiFailure {
       : null;
 
   return {
-    title: 'El servidor tuvo un problema',
-    message: backendMessage ?? 'No pudimos obtener las películas en este momento.',
+    title: error.response.status === 400 ? 'Revisá los datos' : 'No pudimos completar la acción',
+    message: backendMessage ?? 'Intentá nuevamente en unos momentos.',
     requiresLogin: false,
   };
 }
-

@@ -32,6 +32,7 @@ export default function RouletteScreen() {
     reviewedIds,
     reviews,
     toggleFavorite,
+    dismissedIds,
   } = useAppExperience();
   const [movies, setMovies] = useState<Movie[]>([]);
   const [selected, setSelected] = useState<Movie | null>(null);
@@ -40,7 +41,13 @@ export default function RouletteScreen() {
   const [spinning, setSpinning] = useState(false);
   const [reviewMovie, setReviewMovie] = useState<Movie | null>(null);
   const spinValue = useRef(new Animated.Value(0)).current;
-  const eligibleMovies = movies.filter((movie) => !reviewedIds.has(movie.id));
+  const eligibleMovies = movies.filter((movie) => !reviewedIds.has(movie.id) && !dismissedIds.has(movie.id));
+
+  useEffect(() => {
+    if (selected && (dismissedIds.has(selected.id) || reviewedIds.has(selected.id)) && !reviewMovie) {
+      setSelected(null);
+    }
+  }, [dismissedIds, reviewedIds, reviewMovie, selected]);
 
   useEffect(() => {
     let mounted = true;
@@ -48,6 +55,8 @@ export default function RouletteScreen() {
     setLoading(true);
     setFailure(null);
     setSelected(null);
+    setSpinning(false);
+    spinValue.stopAnimation();
 
     loadRecommendations()
       .then((results) => {
@@ -68,8 +77,9 @@ export default function RouletteScreen() {
 
     return () => {
       mounted = false;
+      spinValue.stopAnimation();
     };
-  }, [loadRecommendations, recommendationsVersion]);
+  }, [loadRecommendations, recommendationsVersion, spinValue]);
 
   const chooseMovie = () => {
     if (eligibleMovies.length === 0 || spinning) {
@@ -85,7 +95,8 @@ export default function RouletteScreen() {
       duration: 900,
       toValue: 1,
       useNativeDriver: true,
-    }).start(() => {
+    }).start(({ finished }) => {
+      if (!finished) return;
       const available = previousSelection && eligibleMovies.length > 1
         ? eligibleMovies.filter((movie) => movie.id !== previousSelection.id)
         : eligibleMovies;
@@ -238,7 +249,7 @@ export default function RouletteScreen() {
       <Text style={styles.eyebrow}>NO DES MÁS VUELTAS</Text>
       <Text style={styles.title}>La Cine-Ruleta decide por vos.</Text>
       <Text style={styles.description}>
-        Elegiremos una película entre tus diez recomendaciones actuales.
+        Elegiremos una película entre tus recomendaciones actuales.
       </Text>
 
       <Animated.View style={[styles.wheel, { transform: [{ rotate: rotation }] }]}>
@@ -259,7 +270,7 @@ export default function RouletteScreen() {
 
       {eligibleMovies.length === 0 ? (
         <Text style={styles.emptyText}>
-          Ya viste todas estas recomendaciones. Cambiá tus preferencias para descubrir otras.
+          No quedan opciones en este lote. Pedí Otras 10 en Para vos o ampliá tus gustos.
         </Text>
       ) : null}
     </View>

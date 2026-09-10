@@ -79,3 +79,9 @@ export async function deleteProfileReview(
     ),
   ]);
 }
+
+export async function clearProfileReviews(accountKey: string): Promise<void> {
+  const ids = await loadReviewIds(accountKey);
+  await Promise.all(ids.map((id) => SecureStore.deleteItemAsync(reviewKey(accountKey, id))));
+  await SecureStore.deleteItemAsync(indexKey(accountKey));
+}

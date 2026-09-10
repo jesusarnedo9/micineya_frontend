@@ -22,6 +22,7 @@ import {
 import { describeApiError, isAuthError } from '../api/errors';
 import { logoutFromServer } from '../api/profile';
 import { clearSession } from '../auth/session';
+import { AccountSettings } from '../components/profile/account-settings';
 
 function toggleSelection(current: Set<number>, id: number): Set<number> {
   const next = new Set(current);
@@ -267,6 +268,7 @@ export default function OnboardingScreen() {
           </Pressable>
         </View>
 
+        <AccountSettings />
         <View style={styles.hero}>
           <Text style={styles.eyebrow}>PERSONALIZÁ MICINEYA</Text>
           <Text style={styles.title}>Encontrá algo para ver sin dar vueltas</Text>

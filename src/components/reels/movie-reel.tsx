@@ -23,6 +23,8 @@ interface MovieReelProps {
   reviewed?: boolean;
   onSave?: (movie: Movie) => void;
   onReview?: (movie: Movie) => void;
+  onDismiss?: (movie: Movie) => void;
+  dismissDisabled?: boolean;
 }
 
 export function MovieReel({
@@ -36,6 +38,8 @@ export function MovieReel({
   reviewed = false,
   onSave,
   onReview,
+  onDismiss,
+  dismissDisabled = false,
 }: MovieReelProps) {
   const [playerError, setPlayerError] = useState(false);
   const [playerReady, setPlayerReady] = useState(false);
@@ -143,10 +147,22 @@ export function MovieReel({
       </View>
 
       <View pointerEvents="box-none" style={styles.overlay}>
-        <View pointerEvents="none" style={styles.topRow}>
+        <View pointerEvents="box-none" style={styles.topRow}>
           <View style={styles.labelPill}>
             <Text style={styles.label}>{label}</Text>
           </View>
+          {onDismiss ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`No me interesa ${movie.title}`}
+              disabled={dismissDisabled}
+              onPress={() => onDismiss(movie)}
+              style={({ pressed }) => [styles.dismissButton, pressed && styles.pressed]}
+            >
+              <Ionicons name="eye-off-outline" color="#ccc" size={17} />
+              <Text style={styles.dismissText}>No me interesa</Text>
+            </Pressable>
+          ) : null}
         </View>
 
         <View pointerEvents="box-none" style={styles.bottomRow}>
@@ -267,6 +283,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 7,
   },
+  dismissButton: {
+    alignItems: 'center', flexDirection: 'row', gap: 5, minHeight: 44,
+    paddingHorizontal: 10, borderRadius: 18, backgroundColor: 'rgba(0,0,0,0.66)',
+  },
+  dismissText: { color: '#ccc', fontSize: 11, fontWeight: '600' },
   label: {
     color: '#fff',
     fontSize: 13,
