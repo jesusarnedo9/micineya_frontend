@@ -50,7 +50,7 @@ export interface RecommendationBatch { movies: Movie[]; notice: string | null }
 function recommendationBatch(data: MovieResponse): RecommendationBatch {
   const ignored = data.generosSinEquivalencia ?? [];
   return { movies: data.results ?? [], notice: ignored.length > 0
-    ? `En series, TMDB no tiene una categoría equivalente para: ${ignored.join(', ')}. Podés ajustar tus gustos desde Mi perfil.` : null };
+    ? `En series, No encontramos una categoría equivalente para: ${ignored.join(', ')}. Podés ajustar tus gustos desde Mi perfil.` : null };
 }
 
 export async function fetchRecommendationBatch(type: MediaType): Promise<RecommendationBatch> {

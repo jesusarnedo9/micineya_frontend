@@ -393,7 +393,6 @@ export default function ProfileScreen() {
                 <Text style={styles.sectionEyebrow}>PARA DESPUÉS</Text>
                 <Text style={styles.sectionTitle}>Tu biblioteca</Text>
               </View>
-              <Text style={styles.savedCount}>{favoriteMovies.length}</Text>
             </View>
 
             {favoriteMovies.length > 0 ? (
@@ -661,11 +660,6 @@ const styles = StyleSheet.create({
     fontSize: 21,
     fontWeight: '900',
     marginTop: 3,
-  },
-  savedCount: {
-    color: '#ff7b80',
-    fontSize: 24,
-    fontWeight: '900',
   },
   reviewCard: {
     backgroundColor: '#121012',

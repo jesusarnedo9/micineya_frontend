@@ -1,7 +1,7 @@
 import { MovieReelFeed } from '../../components/reels/movie-reel-feed';
 import { useAppExperience } from '../../context/app-experience';
 import { Ionicons } from '@expo/vector-icons';
-import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { describeApiError } from '../../api/errors';
 import { useCallback, useState } from 'react';
@@ -13,9 +13,9 @@ export default function RecommendedScreen() {
   const {
     loadRecommendations, recommendationsVersion, renewRecommendations,
     undoDismissal, clearDismissalNotice, lastDismissed, recommendationsBusy,
-    recommendationNotices,
   } = useAppExperience();
   const loader = useCallback(() => loadRecommendations(mediaType), [loadRecommendations, mediaType]);
+  const switchContentType = useCallback(() => setMediaType((current) => current === 'movie' ? 'tv' : 'movie'), []);
 
   const runAction = async (action: () => Promise<void>) => {
     try {
@@ -28,22 +28,7 @@ export default function RecommendedScreen() {
 
   return (
     <SafeAreaView edges={['top']} style={styles.screen}>
-      <View style={{ paddingHorizontal: 16, paddingTop: 6 }}><ContentTypeTabs value={mediaType} onChange={setMediaType} /></View>
-      <View style={styles.toolbar}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Mostrarme otras diez recomendaciones"
-          accessibilityState={{ disabled: recommendationsBusy, busy: recommendationsBusy }}
-          disabled={recommendationsBusy}
-          onPress={() => void runAction(() => renewRecommendations(mediaType))}
-          style={[styles.refresh, recommendationsBusy && styles.disabled]}
-        >
-          {recommendationsBusy ? <ActivityIndicator color="#ff9ba0" size="small" />
-            : <Ionicons name="refresh" color="#ff9ba0" size={18} />}
-          <Text style={styles.refreshText}>{recommendationsBusy ? 'Un momento...' : 'Otras 10'}</Text>
-        </Pressable>
-      </View>
-      {!!recommendationNotices[mediaType] && <Text style={{ color: '#d4b67b', fontSize: 11, paddingHorizontal: 16, paddingBottom: 8 }}>{recommendationNotices[mediaType]}</Text>}
+      <View style={{ paddingHorizontal: 16, paddingVertical: 6 }}><ContentTypeTabs value={mediaType} onChange={setMediaType} /></View>
       {lastDismissed && mediaTypeOf(lastDismissed) === mediaType ? (
         <View style={styles.notice}>
           <View style={styles.noticeCopy}>
@@ -63,12 +48,14 @@ export default function RecommendedScreen() {
       <MovieReelFeed
         key={`${mediaType}:${recommendationsVersion}`}
         emptyMessage={mediaType === 'tv'
-          ? 'No encontramos más series con estos gustos y plataformas. Algunos géneros, como Terror o Romance, no tienen equivalente en series en TMDB. Podés agregar géneros desde Mi perfil o pedir Otras 10.'
-          : 'No encontramos más películas con estos gustos y plataformas. Podés probar Otras 10 o ampliar tus preferencias desde Mi perfil.'}
+          ? 'Por ahora no hay más series para mostrar.'
+          : 'Por ahora no hay más películas para mostrar.'}
         label={mediaType === 'tv' ? 'Series para vos' : 'Para vos'}
         loader={loader}
         maxItems={10}
         allowDismiss
+        onRenew={() => void runAction(() => renewRecommendations(mediaType))}
+        onHorizontalSwipe={switchContentType}
       />
     </SafeAreaView>
   );
@@ -76,11 +63,8 @@ export default function RecommendedScreen() {
 
 const styles = StyleSheet.create({
   screen: { backgroundColor: '#000', flex: 1 },
-  toolbar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', paddingHorizontal: 16, paddingVertical: 6 },
   secondaryText: { color: '#bbb', fontSize: 12 },
-  refresh: { flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: '#241b1e', paddingHorizontal: 15, minHeight: 44, borderRadius: 22 },
   refreshText: { color: '#ff9ba0', fontSize: 13, fontWeight: '800' },
-  disabled: { opacity: 0.6 },
   notice: { backgroundColor: '#201719', paddingLeft: 16, flexDirection: 'row', alignItems: 'center' },
   noticeCopy: { flex: 1, gap: 3, paddingVertical: 8 },
   noticeTitle: { color: '#fff', fontSize: 12, fontWeight: '700' },

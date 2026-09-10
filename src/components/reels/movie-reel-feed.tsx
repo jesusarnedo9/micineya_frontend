@@ -20,6 +20,7 @@ import { useAppExperience } from '../../context/app-experience';
 import { contentKey, type Movie } from '../../types/movie';
 import { ReviewComposer } from '../reviews/review-composer';
 import { MovieReel } from './movie-reel';
+import { HorizontalSwipeArea } from '../horizontal-swipe-area';
 
 interface MovieReelFeedProps {
   endpoint?: string;
@@ -29,6 +30,8 @@ interface MovieReelFeedProps {
   infinite?: boolean;
   emptyMessage?: string;
   allowDismiss?: boolean;
+  onRenew?: () => void;
+  onHorizontalSwipe?: () => void;
 }
 
 interface Viewport {
@@ -43,6 +46,8 @@ export function MovieReelFeed({
   maxItems,
   infinite = false,
   allowDismiss = false,
+  onRenew,
+  onHorizontalSwipe,
   emptyMessage = 'Todavía no encontramos películas para mostrar.',
 }: MovieReelFeedProps) {
   const router = useRouter();
@@ -198,16 +203,16 @@ export function MovieReelFeed({
 
   if (loading) {
     return (
-      <View style={styles.centered}>
+      <HorizontalSwipeArea onSwipe={onHorizontalSwipe} style={styles.centered}>
         <ActivityIndicator color="#e50914" size="large" />
         <Text style={styles.loadingText}>Buscando algo para vos...</Text>
-      </View>
+      </HorizontalSwipeArea>
     );
   }
 
   if (failure) {
     return (
-      <View style={styles.centered}>
+      <HorizontalSwipeArea onSwipe={onHorizontalSwipe} style={styles.centered}>
         <Text style={styles.errorTitle}>{failure.title}</Text>
         <Text style={styles.errorMessage}>{failure.message}</Text>
         <Pressable onPress={() => void handleFailureAction()} style={styles.retryButton}>
@@ -215,26 +220,28 @@ export function MovieReelFeed({
             {failure.requiresLogin ? 'Iniciar sesión' : 'Reintentar'}
           </Text>
         </Pressable>
-      </View>
+      </HorizontalSwipeArea>
     );
   }
 
   if (visibleMovies.length === 0) {
     return (
-      <View style={styles.centered}>
+      <HorizontalSwipeArea onSwipe={onHorizontalSwipe} style={styles.centered}>
         <Text style={styles.errorTitle}>Sin resultados</Text>
         <Text style={styles.errorMessage}>{emptyMessage}</Text>
-      </View>
+        {onRenew ? (
+          <Pressable accessibilityRole="button" accessibilityLabel="Mostrarme otras diez recomendaciones"
+            accessibilityState={{ disabled: recommendationsBusy, busy: recommendationsBusy }}
+            disabled={recommendationsBusy} onPress={onRenew} style={styles.retryButton}>
+            {recommendationsBusy ? <ActivityIndicator color="#fff" /> : <Text style={styles.retryText}>Otras 10</Text>}
+          </Pressable>
+        ) : null}
+      </HorizontalSwipeArea>
     );
   }
 
   return (
     <View style={styles.container}>
-      {allowDismiss && movies.length < 10 ? (
-        <Text style={styles.catalogNotice}>
-          Encontramos {movies.length} opciones. Ampliá tus gustos para descubrir más.
-        </Text>
-      ) : null}
       <View onLayout={handleLayout} style={styles.container}>
       {viewport.height > 0 && viewport.width > 0 ? (
         <FlatList
@@ -274,6 +281,9 @@ export function MovieReelFeed({
               onDismiss={allowDismiss ? (movie) => void handleDismiss(movie) : undefined}
               dismissDisabled={recommendationsBusy}
               onSave={(movie) => void handleSave(movie)}
+              onRenew={onRenew}
+              renewBusy={recommendationsBusy}
+              onHorizontalSwipe={onHorizontalSwipe}
               reviewed={reviewedIds.has(contentKey(item))}
               saved={favoriteIds.has(contentKey(item))}
               width={viewport.width}
@@ -299,7 +309,6 @@ export function MovieReelFeed({
 }
 
 const styles = StyleSheet.create({
-  catalogNotice: { color: '#d4b67b', fontSize: 12, paddingHorizontal: 18, paddingVertical: 8, backgroundColor: '#19150f' },
   container: {
     backgroundColor: '#000',
     flex: 1,

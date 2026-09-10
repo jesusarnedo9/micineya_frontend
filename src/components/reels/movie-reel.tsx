@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -11,6 +11,7 @@ import {
 import YoutubePlayer, { PLAYER_STATES } from 'react-native-youtube-iframe';
 
 import type { Movie } from '../../types/movie';
+import { HorizontalSwipeArea } from '../horizontal-swipe-area';
 
 interface MovieReelProps {
   movie: Movie;
@@ -25,6 +26,9 @@ interface MovieReelProps {
   onReview?: (movie: Movie) => void;
   onDismiss?: (movie: Movie) => void;
   dismissDisabled?: boolean;
+  onRenew?: () => void;
+  renewBusy?: boolean;
+  onHorizontalSwipe?: () => void;
 }
 
 export function MovieReel({
@@ -40,14 +44,21 @@ export function MovieReel({
   onReview,
   onDismiss,
   dismissDisabled = false,
+  onRenew,
+  renewBusy = false,
+  onHorizontalSwipe,
 }: MovieReelProps) {
   const [playerError, setPlayerError] = useState(false);
   const [playerReady, setPlayerReady] = useState(false);
   const [playing, setPlaying] = useState(false);
   const [minimumPosterElapsed, setMinimumPosterElapsed] = useState(false);
+  const playerRef = useRef<View>(null);
+  const [bottomHeight, setBottomHeight] = useState(0);
 
   const hasVideo = Boolean(movie.videoKey) && !playerError;
   const playerHeight = Math.max(200, Math.min(width * (9 / 16), height * 0.46));
+  // Reserve the actual button/title height so the extra action doesn't cover YouTube.
+  const playerTop = Math.max(0, Math.min((height - playerHeight) / 2, height - bottomHeight - 34 - playerHeight));
 
   useEffect(() => {
     setPlaying(active && playerReady && minimumPosterElapsed);
@@ -91,10 +102,11 @@ export function MovieReel({
   const hasRating = typeof movie.vote_average === 'number' && movie.vote_average > 0;
 
   return (
-    <View style={[styles.container, { width, height }]}>
+    <HorizontalSwipeArea onSwipe={onHorizontalSwipe} protectedViewRef={playerRef} style={[styles.container, { width, height }]}>
       <View style={styles.media}>
         {hasVideo && mountVideo ? (
           <>
+            <View ref={playerRef} collapsable={false} style={{ position: 'absolute', top: playerTop, width, height: playerHeight }}>
             <YoutubePlayer
               height={playerHeight}
               width={width}
@@ -113,6 +125,7 @@ export function MovieReel({
                 mediaPlaybackRequiresUserAction: false,
               }}
             />
+            </View>
             {showLoadingPoster ? (
               <View style={styles.loadingPoster}>
                 {movie.poster_path ? (
@@ -165,7 +178,8 @@ export function MovieReel({
           ) : null}
         </View>
 
-        <View pointerEvents="box-none" style={styles.bottomRow}>
+        <View pointerEvents="box-none" style={styles.bottomRow}
+          onLayout={(event) => setBottomHeight(event.nativeEvent.layout.height)}>
           <View pointerEvents="none" style={styles.movieInfo}>
             <Text style={styles.title}>{movie.title}</Text>
             {hasRating ? (
@@ -213,10 +227,19 @@ export function MovieReel({
                 <Text style={styles.actionText}>{reviewed ? 'Reseñada' : 'La vi'}</Text>
               </Pressable>
             ) : null}
+            {onRenew ? (
+              <Pressable accessibilityRole="button" accessibilityLabel="Mostrarme otras diez recomendaciones"
+                accessibilityState={{ disabled: renewBusy, busy: renewBusy }} disabled={renewBusy}
+                onPress={onRenew} style={({ pressed }) => [styles.actionButton, pressed && styles.pressed, renewBusy && styles.disabled]}>
+                {renewBusy ? <ActivityIndicator color="#ff9ba0" style={{ height: 30 }} />
+                  : <Ionicons name="refresh" color="#ff9ba0" size={30} />}
+                <Text style={styles.actionText}>Otras 10</Text>
+              </Pressable>
+            ) : null}
           </View>
         </View>
       </View>
-    </View>
+    </HorizontalSwipeArea>
   );
 }
 
@@ -341,12 +364,14 @@ const styles = StyleSheet.create({
   },
   actions: {
     alignItems: 'center',
-    gap: 22,
+    gap: 14,
   },
   actionButton: {
     alignItems: 'center',
     minWidth: 62,
+    minHeight: 48,
   },
+  disabled: { opacity: 0.6 },
   pressed: {
     opacity: 0.65,
     transform: [{ scale: 0.96 }],
