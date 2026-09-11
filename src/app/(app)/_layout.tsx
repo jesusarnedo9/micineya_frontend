@@ -51,6 +51,7 @@ export default function AppLayout() {
           href: null,
         }}
         />
+        <Tabs.Screen name="search" options={{ href: null }} />
         <Tabs.Screen
           name="community"
           options={{

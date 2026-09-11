@@ -1,6 +1,7 @@
 import { MovieReelFeed } from '../../components/reels/movie-reel-feed';
 import { useAppExperience } from '../../context/app-experience';
 import { Ionicons } from '@expo/vector-icons';
+import { type Href, useRouter } from 'expo-router';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { describeApiError } from '../../api/errors';
@@ -9,6 +10,7 @@ import { ContentTypeTabs } from '../../components/content-type-tabs';
 import { mediaTypeOf, type MediaType } from '../../types/movie';
 
 export default function RecommendedScreen() {
+  const router = useRouter();
   const [mediaType, setMediaType] = useState<MediaType>('movie');
   const {
     loadRecommendations, recommendationsVersion, renewRecommendations,
@@ -28,7 +30,13 @@ export default function RecommendedScreen() {
 
   return (
     <SafeAreaView edges={['top']} style={styles.screen}>
-      <View style={{ paddingHorizontal: 16, paddingVertical: 6 }}><ContentTypeTabs value={mediaType} onChange={setMediaType} /></View>
+      <View style={styles.topBar}>
+        <View style={styles.contentTabs}><ContentTypeTabs value={mediaType} onChange={setMediaType} /></View>
+        <Pressable accessibilityLabel="Buscar películas" accessibilityRole="button"
+          onPress={() => router.push('/search' as Href)} style={({ pressed }) => [styles.searchButton, pressed && styles.pressed]}>
+          <Ionicons color="#fff" name="search" size={22} />
+        </Pressable>
+      </View>
       {lastDismissed && mediaTypeOf(lastDismissed) === mediaType ? (
         <View style={styles.notice}>
           <View style={styles.noticeCopy}>
@@ -63,6 +71,13 @@ export default function RecommendedScreen() {
 
 const styles = StyleSheet.create({
   screen: { backgroundColor: '#000', flex: 1 },
+  topBar: { alignItems: 'center', flexDirection: 'row', gap: 9, paddingHorizontal: 16, paddingVertical: 6 },
+  contentTabs: { flex: 1 },
+  searchButton: {
+    alignItems: 'center', backgroundColor: '#24191c', borderColor: '#493137', borderRadius: 22,
+    borderWidth: 1, height: 44, justifyContent: 'center', width: 44,
+  },
+  pressed: { opacity: 0.65, transform: [{ scale: 0.96 }] },
   secondaryText: { color: '#bbb', fontSize: 12 },
   refreshText: { color: '#ff9ba0', fontSize: 13, fontWeight: '800' },
   notice: { backgroundColor: '#201719', paddingLeft: 16, flexDirection: 'row', alignItems: 'center' },

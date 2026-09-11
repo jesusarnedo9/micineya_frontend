@@ -50,7 +50,7 @@ export function PostCard({ post, onAuthor, onReport }: { post: Post; onAuthor?: 
 
 export const s = StyleSheet.create({
   screen: { flex: 1, backgroundColor: '#090708' },
-  content: { padding: 20, paddingBottom: 30, gap: 16 },
+  content: { flexGrow: 1, padding: 20, paddingBottom: 30, gap: 16 },
   eyebrow: { color: '#ff7c85', fontSize: 12, fontWeight: '900', letterSpacing: 2 },
   heading: { color: '#fff', fontSize: 30, fontWeight: '900' },
   muted: { color: '#b1a6a8', fontSize: 13, lineHeight: 20 },

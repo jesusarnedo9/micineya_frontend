@@ -12,6 +12,7 @@ import YoutubePlayer, { PLAYER_STATES } from 'react-native-youtube-iframe';
 
 import type { Movie } from '../../types/movie';
 import { HorizontalSwipeArea } from '../horizontal-swipe-area';
+import { formatPlatforms } from './provider-label';
 
 interface MovieReelProps {
   movie: Movie;
@@ -100,6 +101,7 @@ export function MovieReel({
     && mountVideo
     && (!playerReady || !minimumPosterElapsed);
   const hasRating = typeof movie.vote_average === 'number' && movie.vote_average > 0;
+  const platformLabel = formatPlatforms(movie.plataformas);
 
   return (
     <HorizontalSwipeArea onSwipe={onHorizontalSwipe} protectedViewRef={playerRef} style={[styles.container, { width, height }]}>
@@ -182,13 +184,22 @@ export function MovieReel({
           onLayout={(event) => setBottomHeight(event.nativeEvent.layout.height)}>
           <View pointerEvents="none" style={styles.movieInfo}>
             <Text style={styles.title}>{movie.title}</Text>
-            {hasRating ? (
-              <View style={styles.ratingPill}>
-                <Ionicons color="#f6c85f" name="star" size={14} />
-                <Text style={styles.ratingText}>{movie.vote_average?.toFixed(1)} / 10</Text>
-                <Text style={styles.tmdbLabel}>TMDB</Text>
-              </View>
-            ) : null}
+            <View style={styles.metadata}>
+              {hasRating ? (
+                <View style={styles.ratingPill}>
+                  <Ionicons color="#f6c85f" name="star" size={14} />
+                  <Text style={styles.ratingText}>{movie.vote_average?.toFixed(1)} / 10</Text>
+                  <Text style={styles.tmdbLabel}>TMDB</Text>
+                </View>
+              ) : null}
+              {platformLabel ? (
+                <View style={styles.platformPill}>
+                  <Ionicons color="#ffb0b5" name="play-circle-outline" size={14} />
+                  <Text numberOfLines={1} style={styles.platformText}>{platformLabel}</Text>
+                  <Text style={styles.providerSource}>JUSTWATCH</Text>
+                </View>
+              ) : null}
+            </View>
             {!movie.videoKey || playerError ? (
               <Text style={styles.videoUnavailable}>Trailer no disponible</Text>
             ) : null}
@@ -345,6 +356,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 6,
   },
+  metadata: { alignItems: 'flex-start', gap: 7 },
+  platformPill: {
+    alignItems: 'center', alignSelf: 'flex-start', backgroundColor: 'rgba(36,20,23,0.88)',
+    borderColor: 'rgba(255,123,128,0.34)', borderRadius: 15, borderWidth: 1,
+    flexDirection: 'row', gap: 5, maxWidth: '100%', paddingHorizontal: 10, paddingVertical: 6,
+  },
+  platformText: { color: '#fff', flexShrink: 1, fontSize: 12, fontWeight: '800' },
+  providerSource: { color: '#8e8184', fontSize: 7, fontWeight: '900', letterSpacing: 0.5 },
   ratingText: {
     color: '#fff',
     fontSize: 13,

@@ -13,6 +13,13 @@ export async function fetchMovies(endpoint: string): Promise<Movie[]> {
   return (await fetchMoviePage(endpoint, 1)).movies;
 }
 
+export async function searchMovies(query: string): Promise<Movie[]> {
+  const response = await apiClient.get<MovieResponse>('/api/peliculas/buscar', {
+    params: { query: query.trim() },
+  });
+  return (response.data.results ?? []).map((movie) => ({ ...movie, mediaType: 'movie' }));
+}
+
 export async function fetchMoviePage(endpoint: string, page: number): Promise<MoviePage> {
   const response = await apiClient.get<MovieResponse | Movie[]>(endpoint, {
     params: { page },

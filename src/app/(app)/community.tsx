@@ -1,5 +1,5 @@
-import { useCallback, useRef, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
+import { useCallback, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, BackHandler, FlatList, Keyboard, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
@@ -8,12 +8,12 @@ import {
   type CommunityReport, type CommunityStatus, type ModerationAction, type Person, type Post, type PostPage, type ReportReason,
 } from '../../api/community';
 import { describeApiError } from '../../api/errors';
+import type { PopcornProgress } from '../../api/progress';
 import { COMMUNITY_RULES, COMMUNITY_RULES_VERSION } from '../../components/community/community-rules';
 import { CommunityButton as Button, PersonRow, PostCard, s } from '../../components/community/community-ui';
 import { ReportSheet } from '../../components/community/report-sheet';
-import { ProfileAvatar } from '../../components/profile/profile-avatar';
 import { PopcornRoom } from '../../components/profile/popcorn-room';
-import type { PopcornProgress } from '../../api/progress';
+import { ProfileAvatar } from '../../components/profile/profile-avatar';
 
 type Screen = { type: 'feed' } | { type: 'search'; query: string } | { type: 'profile'; id: number } | { type: 'moderation' };
 type ReportTarget = { usuarioId: number; resenaId: number | null };
@@ -160,8 +160,7 @@ export default function CommunityScreen() {
           <TextInput accessibilityLabel="Buscar por nombre de usuario" autoCapitalize="none" autoCorrect={false} value={query} onChangeText={setQuery} maxLength={50} placeholder="Buscar por nombre de usuario" placeholderTextColor="#95878b" style={s.input} returnKeyType="search" onSubmitEditing={search} editable={!busy} />
           <Button title="Buscar personas" disabled={busy || query.trim().length < 2} onPress={search} />
           {status.puedeModerar && <Button title="Revisar reportes" secondary disabled={busy} onPress={() => setScreen({ type: 'moderation' })} />}
-          {screen.type === 'search' && <Button title="Volver al feed de Siguiendo" secondary disabled={busy} onPress={() => { setQuery(''); setScreen({ type: 'feed' }); }} />}
-          {screen.type === 'search' && <Text style={s.muted}>Resultados para “{screen.query}” · hasta 20 coincidencias. Si no aparece alguien, probá con su usuario completo; debe haber activado Comunidad.</Text>}
+          {screen.type === 'search' && <Text style={s.muted}>Resultados para “{screen.query}”</Text>}
           {screen.type === 'search' && people.map((p) => <PersonRow key={p.id} person={p} onPress={() => openProfile(p.id)} />)}
         </>}
         {ready && screen.type === 'profile' && person && <View style={s.card}>
@@ -196,8 +195,9 @@ export default function CommunityScreen() {
           <Text style={s.muted}>{screen.type === 'feed' ? 'Buscá a tus amigos por su usuario y seguilos. Sus puntuaciones y reseñas aparecerán en este espacio.' : screen.type === 'search' ? 'No encontramos coincidencias disponibles. Revisá el nombre de usuario.' : screen.type === 'moderation' ? 'No hay reportes pendientes de revisión.' : 'Esta persona aún no tiene publicaciones visibles.'}</Text>
         </View>}
       </View>}
-      ListFooterComponent={<View style={{ gap: 14, paddingTop: 18 }}>
+      ListFooterComponent={<View style={{ gap: 14, marginTop: 'auto', paddingBottom: 4, paddingTop: 32 }}>
         {hasMore && <Button title={loading ? 'Cargando…' : 'Ver más'} secondary disabled={disabled} onPress={() => { if (!loadRef.current) void load(screen, page + 1, true); }} />}
+         {screen.type === 'search' && <Button title="Volver al feed de Siguiendo" secondary disabled={busy} onPress={() => { setQuery(''); setScreen({ type: 'feed' }); }} />}
         {status && <Text style={s.muted}>Tu ID de cuenta: {status.miId} · Guardadas y preferencias privadas.</Text>}
       </View>}
     />

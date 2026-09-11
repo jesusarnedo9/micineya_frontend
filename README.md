@@ -50,8 +50,10 @@ Elegir qué ver suele convertirse en una búsqueda interminable entre catálogos
 - Mantener la sesión iniciada de forma segura y cerrarla desde Perfil o Preferencias.
 - Elegir plataformas de streaming y géneros favoritos.
 - Recibir diez recomendaciones personalizadas por vez.
+- Buscar películas en todo el catálogo, sin limitarse a las preferencias, y registrarlas como vistas.
 - Explorar trailers en un feed vertical y utilizar los controles nativos de YouTube.
 - Consultar la puntuación pública de cada película en TMDB.
+- Ver en qué plataforma seleccionada está disponible cada recomendación.
 - Guardar películas para ver más adelante y quitarlas de la lista.
 - Marcar una película como vista, puntuarla de 1 a 5 y escribir una reseña opcional.
 - Editar una reseña o deshacer una película marcada por error como vista.
@@ -146,7 +148,7 @@ Series integradas en el código del próximo release: Películas/Series en Para 
 una reseña por serie y temporadas completas que suman pochoclos. Requiere desplegar primero el backend compatible.
 Ver [alcance y prueba del release](docs/releases/1.2-series.md). Pendiente probar el flujo integrado en el teléfono y generar el nuevo APK.
 
-Primera etapa de gamificación: [salón de pochoclos](docs/releases/1.1-pochoclos.md), un balde por cada diez películas distintas, caída animada y colección visible en el perfil público. Mi perfil reúne preferencias desplegables y las secciones Vistas, Guardadas y Logros. Las opciones de cuenta, bloqueados y normas están en el engranaje de Configuración.
+Gamificación: [salón de pochoclos](docs/releases/1.1-pochoclos.md), un balde texturado por cada diez películas o temporadas, caída animada, colección e insignias especiales visibles en el perfil público. Mi perfil reúne preferencias desplegables y las secciones Vistas, Guardadas y Logros. Las opciones de cuenta, bloqueados y normas están en el engranaje de Configuración.
 
 El siguiente release agrega **Comunidad**: búsqueda por username, seguir personas, perfiles públicos, feed de reseñas y puntuaciones de seguidos, spoilers, bloqueos y reportes. Las guardadas y preferencias siguen siendo privadas. Antes de compartir el perfil y sus reseñas se solicita aceptar las normas de convivencia.
 
@@ -155,7 +157,7 @@ El panel de moderación solo aparece para cuentas habilitadas en el backend con 
 El MVP para Android está completo y permite recorrer el flujo principal de punta a punta. Las siguientes ideas quedan fuera del alcance actual y forman parte de una posible evolución:
 
 - Verificación de correo y recuperación de contraseña.
-- Seguimiento por episodio e insignias por completar una serie.
+- Seguimiento por episodio y nuevas familias de insignias.
 - Preferencias basadas en actores y directores.
 - Mejoras de precarga y disponibilidad de trailers.
 - Adaptación específica para iOS y una futura versión web.

@@ -10,6 +10,7 @@ export interface PopcornProgress {
   baldesCompletos: number;
   pochoclosEnBalde: number;
   numeroBalde: number;
+  insignias?: string[];
 }
 
 export async function fetchPopcornProgress(): Promise<PopcornProgress> {
