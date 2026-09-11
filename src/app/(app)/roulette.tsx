@@ -21,12 +21,18 @@ import { ReviewComposer } from '../../components/reviews/review-composer';
 import { useAppExperience } from '../../context/app-experience';
 import { contentKey, type MediaType, type Movie } from '../../types/movie';
 import { ContentTypeTabs } from '../../components/content-type-tabs';
+import { HorizontalSwipeArea } from '../../components/horizontal-swipe-area';
 
 export default function RouletteScreen() {
   const [mediaType, setMediaType] = useState<MediaType>('movie');
   return <SafeAreaView edges={['top']} style={styles.resultSafeArea}>
     <View style={{ paddingHorizontal: 16, paddingVertical: 6 }}><ContentTypeTabs value={mediaType} onChange={setMediaType} /></View>
-    <RouletteContent key={mediaType} mediaType={mediaType} />
+    <HorizontalSwipeArea
+      onSwipe={() => setMediaType((current) => current === 'movie' ? 'tv' : 'movie')}
+      style={styles.resultSafeArea}
+    >
+      <RouletteContent key={mediaType} mediaType={mediaType} />
+    </HorizontalSwipeArea>
   </SafeAreaView>;
 }
 
