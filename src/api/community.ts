@@ -8,6 +8,7 @@ export interface Post {
   mediaType?: MediaType;
   id: number; autorId: number; username: string; tmdbId: number; titulo: string;
   posterPath: string | null; calificacion: number; comentario: string | null; spoiler: boolean; fecha: string | null;
+  numeroTemporada?: number;
 }
 export interface PostPage { publicaciones: Post[]; hayMas: boolean }
 export interface PublicProfile extends PostPage { persona: Person; progreso?: PopcornProgress }

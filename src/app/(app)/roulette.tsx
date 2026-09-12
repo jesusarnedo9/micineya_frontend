@@ -250,6 +250,7 @@ function RouletteContent({ mediaType }: { mediaType: MediaType }) {
         </ScrollView>
         <ReviewComposer
           existingReview={reviewMovie ? reviews.find((review) => contentKey(review) === contentKey(reviewMovie)) ?? null : null}
+          existingReviews={reviewMovie ? reviews.filter((review) => contentKey(review) === contentKey(reviewMovie)) : []}
           movie={reviewMovie}
           onClose={() => setReviewMovie(null)}
           onSubmitted={recordReview}

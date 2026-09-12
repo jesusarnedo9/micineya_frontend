@@ -3,8 +3,12 @@ import * as SecureStore from 'expo-secure-store';
 import type { ProfileReview } from '../types/profile';
 import { mediaTypeOf, type MediaType } from '../types/movie';
 
-type StoredId = number | `tv_${number}`;
-const storedId = (id: number, type: MediaType): StoredId => type === 'tv' ? `tv_${id}` : id;
+type StoredId = number | `tv_${number}` | `tv_${number}_s${number}`;
+const storedId = (review: Pick<ProfileReview, 'tmdbId' | 'mediaType' | 'seasonNumber' | 'seasonsWatched'>): StoredId => {
+  if (mediaTypeOf(review) !== 'tv') return review.tmdbId;
+  const season = review.seasonNumber ?? (review.seasonsWatched?.length === 1 ? review.seasonsWatched[0] : undefined);
+  return season ? `tv_${review.tmdbId}_s${season}` : `tv_${review.tmdbId}`;
+};
 const writes = new Map<string, Promise<void>>();
 function serialize(account: string, operation: () => Promise<void>): Promise<void> {
   const key = safeAccountKey(account);
@@ -37,7 +41,7 @@ async function loadReviewIds(username: string): Promise<StoredId[]> {
     const parsed = JSON.parse(stored);
     return Array.isArray(parsed)
       ? parsed.filter((value): value is StoredId => (Number.isInteger(value) && value > 0)
-          || (typeof value === 'string' && /^tv_[1-9][0-9]*$/.test(value)))
+          || (typeof value === 'string' && /^tv_[1-9][0-9]*(?:_s[1-9][0-9]*)?$/.test(value)))
       : [];
   } catch {
     return [];
@@ -75,7 +79,7 @@ async function saveNow(
   review: ProfileReview,
 ): Promise<void> {
   const ids = await loadReviewIds(username);
-  const id = storedId(review.tmdbId, mediaTypeOf(review));
+  const id = storedId(review);
   const nextIds = [id, ...ids.filter((value) => value !== id)];
 
   await Promise.all([
@@ -88,9 +92,10 @@ async function deleteNow(
   username: string,
   tmdbId: number,
   type: MediaType = 'movie',
+  seasonNumber?: number,
 ): Promise<void> {
   const ids = await loadReviewIds(username);
-  const target = storedId(tmdbId, type);
+  const target = storedId({ tmdbId, mediaType: type, seasonNumber });
   await Promise.all([
     SecureStore.deleteItemAsync(reviewKey(username, target)),
     SecureStore.setItemAsync(
@@ -109,8 +114,8 @@ async function clearNow(accountKey: string): Promise<void> {
 export function saveProfileReview(account: string, review: ProfileReview): Promise<void> {
   return serialize(account, () => saveNow(account, review));
 }
-export function deleteProfileReview(account: string, id: number, type: MediaType = 'movie'): Promise<void> {
-  return serialize(account, () => deleteNow(account, id, type));
+export function deleteProfileReview(account: string, id: number, type: MediaType = 'movie', seasonNumber?: number): Promise<void> {
+  return serialize(account, () => deleteNow(account, id, type, seasonNumber));
 }
 export function clearProfileReviews(account: string): Promise<void> {
   return serialize(account, () => clearNow(account));

@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -15,79 +15,101 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { describeApiError } from '../../api/errors';
-import { searchMovies } from '../../api/movies';
+import { fetchContentPlatforms, searchContent } from '../../api/movies';
+import { ContentTypeTabs } from '../../components/content-type-tabs';
 import { ReviewComposer } from '../../components/reviews/review-composer';
 import { formatPlatforms } from '../../components/reels/provider-label';
 import { useAppExperience } from '../../context/app-experience';
-import { contentKey, type Movie } from '../../types/movie';
+import { contentKey, type MediaType, type Movie } from '../../types/movie';
 
 function SearchResult({ movie, watched, onReview }: {
   movie: Movie;
   watched: boolean;
   onReview: () => void;
 }) {
-  const year = movie.release_date?.slice(0, 4);
-  const platform = formatPlatforms(movie.plataformas);
-  const rating = typeof movie.vote_average === 'number' && movie.vote_average > 0
-    ? movie.vote_average.toFixed(1)
-    : null;
+  const [platforms, setPlatforms] = useState(movie.plataformas ?? []);
+  const platform = formatPlatforms(platforms);
 
-  return <View style={styles.resultCard}>
+  useEffect(() => {
+    const controller = new AbortController();
+    setPlatforms(movie.plataformas ?? []);
+    void fetchContentPlatforms(movie, controller.signal)
+      .then(setPlatforms)
+      .catch(() => {});
+    return () => controller.abort();
+  }, [movie.id, movie.mediaType]);
+
+  return <Pressable accessibilityRole="button"
+    accessibilityLabel={watched ? `Editar reseña de ${movie.title}` : `Puntuar ${movie.title}`}
+    onPress={onReview} style={({ pressed }) => [styles.resultCard, pressed && styles.pressed]}>
     {movie.poster_path ? <Image resizeMode="cover"
       source={{ uri: `https://image.tmdb.org/t/p/w342${movie.poster_path}` }} style={styles.poster} />
       : <View style={[styles.poster, styles.posterFallback]}><Ionicons color="#63585b" name="film-outline" size={32} /></View>}
     <View style={styles.resultBody}>
       <View>
         <Text numberOfLines={2} style={styles.movieTitle}>{movie.title}</Text>
-        {year ? <Text style={styles.year}>{year}</Text> : null}
       </View>
-      <View style={styles.metadata}>
-        {rating ? <View style={styles.pill}>
-          <Ionicons color="#f6c85f" name="star" size={13} />
-          <Text style={styles.pillText}>{rating}</Text>
-        </View> : null}
-        {platform ? <View style={[styles.pill, styles.platformPill]}>
+      <View style={styles.platformRow}>
+        {platform ? <View style={styles.platformPill}>
           <Ionicons color="#ff9ba0" name="play-circle-outline" size={13} />
           <Text numberOfLines={1} style={styles.pillText}>{platform}</Text>
           <Text style={styles.providerSource}>JUSTWATCH</Text>
         </View> : null}
+        <Ionicons color="#8f8588" name="chevron-forward" size={20} />
       </View>
-      <Pressable accessibilityRole="button"
-        accessibilityLabel={watched ? `${movie.title}, ya vista` : `Marcar ${movie.title} como vista`}
-        disabled={watched} onPress={onReview}
-        style={({ pressed }) => [styles.watchedButton, watched && styles.alreadyWatched, pressed && styles.pressed]}>
-        <Ionicons color="#fff" name={watched ? 'checkmark' : 'eye-outline'} size={17} />
-        <Text style={styles.watchedText}>{watched ? 'Vista' : 'La vi'}</Text>
-      </Pressable>
     </View>
-  </View>;
+  </Pressable>;
 }
 
 export default function MovieSearchScreen() {
   const router = useRouter();
   const { recordReview, reviewedIds, reviews } = useAppExperience();
+  const [mediaType, setMediaType] = useState<MediaType>('movie');
   const [query, setQuery] = useState('');
   const [searched, setSearched] = useState(false);
   const [results, setResults] = useState<Movie[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [reviewMovie, setReviewMovie] = useState<Movie | null>(null);
+  const requestRef = useRef(0);
+  const searchControllerRef = useRef<AbortController | null>(null);
 
-  const runSearch = async () => {
+  useEffect(() => () => searchControllerRef.current?.abort(), []);
+
+  const runSearch = async (type: MediaType = mediaType) => {
     const term = query.trim();
-    if (term.length < 2 || loading) return;
+    if (term.length < 2) return;
+    searchControllerRef.current?.abort();
+    const controller = new AbortController();
+    searchControllerRef.current = controller;
+    const request = ++requestRef.current;
     Keyboard.dismiss();
     setLoading(true);
     setError(null);
     setSearched(true);
     try {
-      setResults(await searchMovies(term));
+      const matches = await searchContent(term, type, controller.signal);
+      if (request === requestRef.current) setResults(matches);
     } catch (failure) {
-      setResults([]);
-      setError(describeApiError(failure).message);
+      if (request === requestRef.current) {
+        setResults([]);
+        setError(describeApiError(failure).message);
+      }
     } finally {
-      setLoading(false);
+      if (request === requestRef.current) {
+        setLoading(false);
+        searchControllerRef.current = null;
+      }
     }
+  };
+
+  const changeMediaType = (type: MediaType) => {
+    if (type === mediaType) return;
+    setMediaType(type);
+    setResults([]);
+    setError(null);
+    if (query.trim().length >= 2) void runSearch(type);
+    else setSearched(false);
   };
 
   return <SafeAreaView edges={['top']} style={styles.screen}>
@@ -96,17 +118,24 @@ export default function MovieSearchScreen() {
         onPress={() => router.back()} style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}>
         <Ionicons color="#fff" name="arrow-back" size={24} />
       </Pressable>
-      <Text style={styles.heading}>Buscar películas</Text>
+      <Text style={styles.heading}>Buscar</Text>
     </View>
+    <View style={styles.typeTabs}><ContentTypeTabs value={mediaType} onChange={changeMediaType} /></View>
     <View style={styles.searchRow}>
       <View style={styles.inputShell}>
         <Ionicons color="#8d8285" name="search" size={20} />
-        <TextInput accessibilityLabel="Buscar película" autoCapitalize="none" autoCorrect={false}
-          autoFocus maxLength={80} onChangeText={(value) => { setQuery(value); setError(null); }}
-          onSubmitEditing={() => void runSearch()} placeholder="Título de la película"
+        <TextInput accessibilityLabel={mediaType === 'tv' ? 'Buscar serie' : 'Buscar película'} autoCapitalize="none" autoCorrect={false}
+          autoFocus maxLength={80} onChangeText={(value) => {
+            searchControllerRef.current?.abort(); searchControllerRef.current = null;
+            requestRef.current += 1; setQuery(value); setResults([]); setSearched(false); setError(null); setLoading(false);
+          }}
+          onSubmitEditing={() => void runSearch()} placeholder={mediaType === 'tv' ? 'Título de la serie' : 'Título de la película'}
           placeholderTextColor="#776d70" returnKeyType="search" style={styles.input} value={query} />
         {query.length > 0 ? <Pressable accessibilityLabel="Borrar búsqueda" hitSlop={8}
-          onPress={() => { setQuery(''); setResults([]); setSearched(false); setError(null); }}>
+          onPress={() => {
+            searchControllerRef.current?.abort(); searchControllerRef.current = null;
+            requestRef.current += 1; setQuery(''); setResults([]); setSearched(false); setError(null); setLoading(false);
+          }}>
           <Ionicons color="#8d8285" name="close-circle" size={20} />
         </Pressable> : null}
       </View>
@@ -122,13 +151,14 @@ export default function MovieSearchScreen() {
       keyboardShouldPersistTaps="handled" keyExtractor={(movie) => String(movie.id)}
       ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
       ListEmptyComponent={!loading && searched ? <Text style={error ? styles.error : styles.empty}>
-        {error ?? 'No encontramos esa película.'}
+        {error ?? `No encontramos esa ${mediaType === 'tv' ? 'serie' : 'película'}.`}
       </Text> : null}
       renderItem={({ item }) => <SearchResult movie={item} watched={reviewedIds.has(contentKey(item))}
         onReview={() => setReviewMovie(item)} />} />
 
     <ReviewComposer existingReview={reviewMovie
       ? reviews.find((review) => contentKey(review) === contentKey(reviewMovie)) ?? null : null}
+      existingReviews={reviewMovie ? reviews.filter((review) => contentKey(review) === contentKey(reviewMovie)) : []}
       movie={reviewMovie} onClose={() => setReviewMovie(null)} onSubmitted={recordReview} />
   </SafeAreaView>;
 }
@@ -141,6 +171,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center', width: 40,
   },
   heading: { color: '#fff', fontSize: 24, fontWeight: '900' },
+  typeTabs: { paddingHorizontal: 18, paddingTop: 18 },
   searchRow: { flexDirection: 'row', gap: 9, paddingHorizontal: 18, paddingTop: 18 },
   inputShell: {
     alignItems: 'center', backgroundColor: '#181416', borderColor: '#3a2b30', borderRadius: 17,
@@ -160,21 +191,13 @@ const styles = StyleSheet.create({
   posterFallback: { alignItems: 'center', justifyContent: 'center' },
   resultBody: { flex: 1, justifyContent: 'space-between', marginLeft: 13, paddingVertical: 2 },
   movieTitle: { color: '#fff', fontSize: 17, fontWeight: '900', lineHeight: 21 },
-  year: { color: '#8f8588', fontSize: 12, marginTop: 3 },
-  metadata: { alignItems: 'center', flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  pill: {
-    alignItems: 'center', backgroundColor: '#211d18', borderRadius: 12, flexDirection: 'row',
-    gap: 4, maxWidth: '100%', paddingHorizontal: 8, paddingVertical: 5,
+  platformRow: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
+  platformPill: {
+    alignItems: 'center', backgroundColor: '#2b171c', borderRadius: 12, flexDirection: 'row',
+    gap: 4, maxWidth: '88%', paddingHorizontal: 8, paddingVertical: 5,
   },
-  platformPill: { backgroundColor: '#2b171c' },
   pillText: { color: '#e8e1e3', flexShrink: 1, fontSize: 10, fontWeight: '800' },
   providerSource: { color: '#7f7276', fontSize: 6, fontWeight: '900', letterSpacing: 0.4 },
-  watchedButton: {
-    alignItems: 'center', alignSelf: 'flex-start', backgroundColor: '#b2162a', borderRadius: 13,
-    flexDirection: 'row', gap: 6, minHeight: 37, paddingHorizontal: 13,
-  },
-  alreadyWatched: { backgroundColor: '#265e42' },
-  watchedText: { color: '#fff', fontSize: 12, fontWeight: '900' },
   disabled: { opacity: 0.45 },
   pressed: { opacity: 0.65, transform: [{ scale: 0.97 }] },
   empty: { color: '#8f8588', fontSize: 14, marginTop: 42, textAlign: 'center' },

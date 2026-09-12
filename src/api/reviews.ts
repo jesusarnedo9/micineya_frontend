@@ -5,6 +5,8 @@ import type { ProfileReview } from '../types/profile';
 interface ReviewResponse {
   mediaType?: MediaType;
   temporadasVistas?: number[];
+  numeroTemporada?: number;
+  serieCompleta?: boolean;
   fechaVista?: string;
   id: number;
   tmdbId: number;
@@ -21,6 +23,8 @@ function mapReview(review: ReviewResponse): ProfileReview {
   return {
     mediaType: review.mediaType ?? 'movie',
     seasonsWatched: review.temporadasVistas ?? [],
+    seasonNumber: review.numeroTemporada ?? (review.temporadasVistas?.length === 1 ? review.temporadasVistas[0] : undefined),
+    seriesComplete: review.serieCompleta ?? false,
     watchedAt: review.fechaVista ?? review.fechaActualizacion ?? '',
     id: review.id,
     tmdbId: review.tmdbId,
@@ -64,6 +68,8 @@ export async function fetchMyReviews(): Promise<ProfileReview[]> {
   return response.data.map(mapReview);
 }
 
-export async function deleteReview(tmdbId: number, type: MediaType = 'movie'): Promise<void> {
-  await apiClient.delete(`/api/biblioteca/resenas/${type}/${tmdbId}`);
+export async function deleteReview(tmdbId: number, type: MediaType = 'movie', seasonNumber?: number): Promise<void> {
+  await apiClient.delete(type === 'tv' && seasonNumber
+    ? `/api/biblioteca/resenas/tv/${tmdbId}/temporadas/${seasonNumber}`
+    : `/api/biblioteca/resenas/${type}/${tmdbId}`);
 }

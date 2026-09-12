@@ -11,6 +11,7 @@ export interface PopcornProgress {
   pochoclosEnBalde: number;
   numeroBalde: number;
   insignias?: string[];
+  tituloCinefilo?: string | null;
 }
 
 export async function fetchPopcornProgress(): Promise<PopcornProgress> {

@@ -13,11 +13,20 @@ export async function fetchMovies(endpoint: string): Promise<Movie[]> {
   return (await fetchMoviePage(endpoint, 1)).movies;
 }
 
-export async function searchMovies(query: string): Promise<Movie[]> {
-  const response = await apiClient.get<MovieResponse>('/api/peliculas/buscar', {
+export async function searchContent(query: string, type: MediaType, signal?: AbortSignal): Promise<Movie[]> {
+  const response = await apiClient.get<MovieResponse>(
+    `/api/${type === 'tv' ? 'series' : 'peliculas'}/buscar`, {
     params: { query: query.trim() },
+    signal,
   });
-  return (response.data.results ?? []).map((movie) => ({ ...movie, mediaType: 'movie' }));
+  return (response.data.results ?? []).slice(0, 5).map((movie) => ({ ...movie, mediaType: type }));
+}
+
+export async function fetchContentPlatforms(movie: Movie, signal?: AbortSignal): Promise<string[]> {
+  const type = mediaTypeOf(movie);
+  const response = await apiClient.get<string[]>(
+    `/api/${type === 'tv' ? 'series' : 'peliculas'}/${movie.id}/plataformas`, { signal });
+  return response.data ?? [];
 }
 
 export async function fetchMoviePage(endpoint: string, page: number): Promise<MoviePage> {

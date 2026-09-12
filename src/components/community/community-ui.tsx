@@ -37,6 +37,7 @@ export function PostCard({ post, onAuthor, onReport }: { post: Post; onAuthor?: 
       {post.posterPath && /^\/[\w.-]+$/.test(post.posterPath) ? <Image source={{ uri: `https://image.tmdb.org/t/p/w185${post.posterPath}` }} style={s.poster} /> : null}
       <View style={{ flex: 1, gap: 10 }}>
         <ContentTypeBadge type={post.mediaType} />
+        {post.mediaType === 'tv' && post.numeroTemporada && <Text style={s.muted}>Temporada {post.numeroTemporada}</Text>}
         <Text style={s.movie}>{post.titulo}</Text>
         <Text accessibilityLabel={`${post.calificacion} de 5 estrellas`} style={s.stars}>{'★'.repeat(Math.max(0, Math.min(5, post.calificacion)))}{'☆'.repeat(Math.max(0, 5 - post.calificacion))}</Text>
         {!!post.comentario && (post.spoiler && !revealed

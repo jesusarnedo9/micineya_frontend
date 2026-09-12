@@ -26,7 +26,7 @@ import { useAppExperience } from '../../context/app-experience';
 import { clearSession } from '../../auth/session';
 import { contentKey, mediaTypeOf, type Movie } from '../../types/movie';
 import { ContentTypeBadge } from '../../components/content-type-tabs';
-import type { ProfileReview } from '../../types/profile';
+import { profileReviewKey, type ProfileReview } from '../../types/profile';
 
 type ProfileSection = 'watched' | 'saved' | 'achievements';
 
@@ -134,6 +134,7 @@ function WatchedCard({
         )}
         <View style={styles.reviewBody}>
           <ContentTypeBadge type={review.mediaType} />
+          {mediaTypeOf(review) === 'tv' && review.seasonNumber && <Text style={styles.emptyReviewText}>Temporada {review.seasonNumber}</Text>}
           <Text numberOfLines={2} style={styles.reviewTitle}>{review.title}</Text>
           <RatingStars rating={review.rating} />
           {review.spoiler && <Text style={styles.emptyReviewText}>Contiene spoilers</Text>}
@@ -179,6 +180,7 @@ export default function ProfileScreen() {
   } = useAppExperience();
   const [section, setSection] = useState<ProfileSection>('watched');
   const [reviewMovie, setReviewMovie] = useState<Movie | null>(null);
+  const [editingReview, setEditingReview] = useState<ProfileReview | null>(null);
   const [removingId, setRemovingId] = useState<string | null>(null);
   const [unmarkingId, setUnmarkingId] = useState<string | null>(null);
   const [loggingOut, setLoggingOut] = useState(false);
@@ -219,10 +221,11 @@ export default function ProfileScreen() {
   };
 
   const handleSavedPress = (favorite: FavoriteMovie) => {
-    if (reviewedIds.has(contentKey(favorite))) {
+    if (mediaTypeOf(favorite) === 'movie' && reviewedIds.has(contentKey(favorite))) {
       setSection('watched');
       return;
     }
+    setEditingReview(null);
     setReviewMovie(favoriteToMovie(favorite));
   };
 
@@ -244,15 +247,15 @@ export default function ProfileScreen() {
   const confirmUnmark = (review: ProfileReview) => {
     Alert.alert(
       'Marcar como no vista',
-      `Se eliminarán tu puntuación y reseña de “${review.title}”${mediaTypeOf(review) === 'tv' ? ', sus temporadas vistas y los pochoclos correspondientes' : ''}.`,
+      `Se eliminarán tu puntuación y reseña de “${review.title}”${review.seasonNumber ? ` · Temporada ${review.seasonNumber}` : ''}.`,
       [
         { text: 'Cancelar', style: 'cancel' },
         {
           text: 'Marcar como no vista',
           style: 'destructive',
           onPress: () => {
-            setUnmarkingId(contentKey(review));
-            void unmarkAsWatched(review.tmdbId, mediaTypeOf(review))
+            setUnmarkingId(profileReviewKey(review));
+            void unmarkAsWatched(review.tmdbId, mediaTypeOf(review), review.seasonNumber)
               .catch(() => {
                 Alert.alert('No se pudo actualizar', 'Intentá nuevamente en unos segundos.');
               })
@@ -287,7 +290,7 @@ export default function ProfileScreen() {
 
           <View style={styles.statsRow}>
             <View style={styles.stat}>
-              <Text style={styles.statValue}>{reviews.length}</Text>
+              <Text style={styles.statValue}>{new Set(reviews.map(contentKey)).size}</Text>
               <Text style={styles.statLabel}>Vistas</Text>
             </View>
             <View style={styles.statDivider} />
@@ -365,11 +368,11 @@ export default function ProfileScreen() {
             {reviews.length > 0 ? (
               reviews.map((review) => (
                 <WatchedCard
-                  key={contentKey(review)}
-                  onEdit={() => setReviewMovie(reviewToMovie(review))}
+                  key={profileReviewKey(review)}
+                  onEdit={() => { setEditingReview(review); setReviewMovie(reviewToMovie(review)); }}
                   onUnmark={() => confirmUnmark(review)}
                   review={review}
-                  unmarking={unmarkingId === contentKey(review)}
+                  unmarking={unmarkingId === profileReviewKey(review)}
                   username={username}
                   photoUri={photoUri}
                 />
@@ -434,7 +437,7 @@ export default function ProfileScreen() {
                             name={watched ? 'checkmark' : 'eye-outline'}
                             size={12}
                           />
-                          <Text style={styles.watchPillText}>{watched ? 'VISTA' : 'LA VI'}</Text>
+                          <Text style={styles.watchPillText}>{watched ? (mediaTypeOf(favorite) === 'tv' ? 'EN CURSO' : 'VISTA') : 'LA VI'}</Text>
                         </View>
                       </Pressable>
                       <Pressable
@@ -472,9 +475,10 @@ export default function ProfileScreen() {
       </ScrollView>
 
       <ReviewComposer
-        existingReview={reviewMovie ? reviews.find((review) => contentKey(review) === contentKey(reviewMovie)) ?? null : null}
+        existingReview={editingReview ?? (reviewMovie ? reviews.find((review) => contentKey(review) === contentKey(reviewMovie)) ?? null : null)}
+        existingReviews={reviewMovie ? reviews.filter((review) => contentKey(review) === contentKey(reviewMovie)) : []}
         movie={reviewMovie}
-        onClose={() => setReviewMovie(null)}
+        onClose={() => { setReviewMovie(null); setEditingReview(null); }}
         onSubmitted={recordReview}
       />
     </SafeAreaView>

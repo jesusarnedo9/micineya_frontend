@@ -299,6 +299,7 @@ export function MovieReelFeed({
 
       <ReviewComposer
         existingReview={reviewMovie ? reviews.find((r) => contentKey(r) === contentKey(reviewMovie)) ?? null : null}
+        existingReviews={reviewMovie ? reviews.filter((r) => contentKey(r) === contentKey(reviewMovie)) : []}
         movie={reviewMovie}
         onClose={() => setReviewMovie(null)}
         onSubmitted={recordReview}

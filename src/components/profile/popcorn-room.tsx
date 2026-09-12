@@ -143,6 +143,7 @@ export function PopcornRoom({ progress, from = progress.totalPochoclos ?? progre
       <Text style={styles.eyebrow}>SALÓN DE POCHOCLOS</Text>
     </View>
     <Text style={styles.heading}>{celebrating ? '¡Balde completo!' : `Balde ${completed + 1}`}</Text>
+    {progress.tituloCinefilo && <View style={styles.cinephileTitle}><Ionicons name="ribbon-outline" size={15} color="#f3cf83" /><Text style={styles.cinephileTitleText}>{progress.tituloCinefilo}</Text></View>}
     <Bucket filled={filled} falling={falling} drop={drop} pulse={pulse} />
     <View accessible accessibilityRole="progressbar" accessibilityLabel={`Balde ${completed + 1}`} accessibilityValue={{ min: 0, max: 10, now: filled }} style={styles.progressBlock}>
       <View style={styles.progressLabels}><Text style={styles.bucketLabel}>BALDE {completed + 1}</Text><Text style={styles.count}>{filled} / 10</Text></View>
@@ -202,6 +203,8 @@ const styles = StyleSheet.create({
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   eyebrow: { color: '#d8b577', fontSize: 10, letterSpacing: 1.4, fontWeight: '900' },
   heading: { color: '#fff3db', fontSize: 23, fontWeight: '900', marginTop: 10 },
+  cinephileTitle: { alignItems: 'center', alignSelf: 'flex-start', backgroundColor: '#382818', borderColor: '#70522d', borderRadius: 18, borderWidth: 1, flexDirection: 'row', gap: 6, marginTop: 9, paddingHorizontal: 11, paddingVertical: 6 },
+  cinephileTitleText: { color: '#f3cf83', fontSize: 12, fontWeight: '900' },
   subtitle: { color: '#b6a99c', fontSize: 12, lineHeight: 19, marginTop: 7 },
   stage: { width: 220, height: 226, alignSelf: 'center', marginVertical: 2 },
   halo: { position: 'absolute', top: 34, left: 2, width: 216, height: 184, borderRadius: 108, backgroundColor: '#b78c2314' },

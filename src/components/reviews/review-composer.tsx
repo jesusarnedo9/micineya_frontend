@@ -26,6 +26,7 @@ import type { ProfileReview } from '../../types/profile';
 interface ReviewComposerProps {
   movie: Movie | null;
   existingReview?: ProfileReview | null;
+  existingReviews?: ProfileReview[];
   onClose: () => void;
   onSubmitted: (review: ProfileReview) => void | Promise<void>;
 }
@@ -35,6 +36,7 @@ const RATING_LABELS = ['', 'Mala', 'Floja', 'Buena', 'Muy buena', 'Excelente'];
 export function ReviewComposer({
   movie,
   existingReview = null,
+  existingReviews = [],
   onClose,
   onSubmitted,
 }: ReviewComposerProps) {
@@ -46,20 +48,36 @@ export function ReviewComposer({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const isSeries = mediaTypeOf(movie) === 'tv';
   const [seasons, setSeasons] = useState<Season[]>([]);
-  const [selectedSeasons, setSelectedSeasons] = useState<number[]>([]);
+  const [selectedSeason, setSelectedSeason] = useState<number | null>(null);
   const [seasonsLoading, setSeasonsLoading] = useState(false);
   const [seasonsError, setSeasonsError] = useState<string | null>(null);
   const [seasonsAttempt, setSeasonsAttempt] = useState(0);
-  const cannotSubmit = rating === 0 || submitting || (isSeries && selectedSeasons.length === 0);
+  const activeReview = isSeries ? existingReviews.find((review) =>
+    (review.seasonNumber ?? (review.seasonsWatched?.length === 1 ? review.seasonsWatched[0] : undefined)) === selectedSeason)
+    ?? (existingReview && (existingReview.seasonNumber ?? existingReview.seasonsWatched?.[0]) === selectedSeason ? existingReview : null)
+    : existingReview;
+  const cannotSubmit = rating === 0 || submitting || (isSeries && selectedSeason === null);
 
   useEffect(() => {
-    setRating(existingReview?.rating ?? 0);
-    setComment(existingReview?.comment ?? '');
-    setSpoiler(existingReview?.spoiler ?? false);
+    const initialSeason = isSeries
+      ? existingReview?.seasonNumber ?? (existingReview?.seasonsWatched?.length === 1 ? existingReview.seasonsWatched[0] : null)
+      : null;
+    setSelectedSeason(initialSeason);
+    const initial = isSeries ? (initialSeason ? existingReview : null) : existingReview;
+    setRating(initial?.rating ?? 0);
+    setComment(initial?.comment ?? '');
+    setSpoiler(initial?.spoiler ?? false);
     setErrorMessage(null);
     setSubmitting(false);
-    setSelectedSeasons(existingReview?.seasonsWatched ?? []);
   }, [existingReview, movie?.id, isSeries]);
+
+  useEffect(() => {
+    if (!isSeries) return;
+    setRating(activeReview?.rating ?? 0);
+    setComment(activeReview?.comment ?? '');
+    setSpoiler(activeReview?.spoiler ?? false);
+    setErrorMessage(null);
+  }, [activeReview?.id, isSeries, selectedSeason]);
 
   useEffect(() => {
     let active = true;
@@ -72,9 +90,12 @@ export function ReviewComposer({
     return () => { active = false; };
   }, [movie?.id, isSeries, seasonsAttempt]);
 
-  const availableSeasons = [...seasons, ...(existingReview?.seasonsWatched ?? [])
+  const reviewedSeasons = existingReviews.flatMap((review) => review.seasonsWatched ?? (review.seasonNumber ? [review.seasonNumber] : []));
+  if (existingReview) reviewedSeasons.push(...(existingReview.seasonsWatched ?? (existingReview.seasonNumber ? [existingReview.seasonNumber] : [])));
+  const availableSeasons = Array.from(new Map([...seasons, ...reviewedSeasons
     .filter((n) => !seasons.some((s) => s.numero === n))
     .map((n) => ({ numero: n, nombre: `Temporada ${n}`, cantidadEpisodios: null, estreno: null }))]
+    .map((season) => [season.numero, season])).values())
     .sort((a, b) => a.numero - b.numero);
 
   const handleSubmit = async () => {
@@ -87,7 +108,7 @@ export function ReviewComposer({
 
     try {
       if (!await ensureCommunityParticipation()) return;
-      const savedReview = await submitReview(movie, rating, comment, spoiler, isSeries ? selectedSeasons : []);
+      const savedReview = await submitReview(movie, rating, comment, spoiler, isSeries && selectedSeason ? [selectedSeason] : []);
       await onSubmitted(savedReview);
       onClose();
     } catch (error) {
@@ -133,9 +154,9 @@ export function ReviewComposer({
               </View>
             )}
             <View style={styles.movieCopy}>
-              <Text style={styles.eyebrow}>{existingReview ? 'EDITAR RESEÑA' : 'LA VISTE'}</Text>
+              <Text style={styles.eyebrow}>{activeReview ? 'EDITAR RESEÑA' : 'LA VISTE'}</Text>
               <Text numberOfLines={2} style={styles.title}>{movie?.title}</Text>
-              <Text style={styles.subtitle}>Puntuá {isSeries ? 'la serie' : 'la película'} y contá qué te pareció.</Text>
+              <Text style={styles.subtitle}>Puntuá {isSeries ? 'una temporada' : 'la película'} y contá qué te pareció.</Text>
             </View>
             <Pressable
               accessibilityLabel="Cerrar"
@@ -149,8 +170,7 @@ export function ReviewComposer({
           </View>
 
           {isSeries && <View style={styles.seasonsBlock}>
-            <Text style={styles.inputLabel}>Temporadas que terminaste</Text>
-            <Text style={styles.subtitle}>Un pochoclo por temporada completa. La puntuación y la reseña son de la serie.</Text>
+            <Text style={styles.inputLabel}>¿Qué temporada terminaste?</Text>
             {seasonsLoading && <ActivityIndicator color="#ff9ba0" style={{ marginTop: 10 }} />}
             {seasonsError && <View>
               <Text style={styles.error}>{seasonsError}</Text>
@@ -159,24 +179,22 @@ export function ReviewComposer({
               </Pressable>
             </View>}
             <View style={styles.seasonList}>{availableSeasons.map((season) => {
-              const selected = selectedSeasons.includes(season.numero);
-              const alreadySeen = existingReview?.seasonsWatched?.includes(season.numero);
+              const selected = selectedSeason === season.numero;
+              const alreadySeen = reviewedSeasons.includes(season.numero);
               const unavailable = !alreadySeen && (season.cantidadEpisodios === 0
                 || !!season.estreno && season.estreno > new Date().toISOString().slice(0, 10));
-              return <Pressable key={season.numero} accessibilityRole="checkbox"
+              return <Pressable key={season.numero} accessibilityRole="radio"
                 accessibilityLabel={`Temporada ${season.numero}${unavailable ? ', no disponible aún' : ''}`}
                 accessibilityState={{ checked: selected, disabled: submitting || unavailable }}
                 disabled={submitting || unavailable}
-                onPress={() => { setSelectedSeasons((current) => selected
-                  ? current.filter((n) => n !== season.numero) : [...current, season.numero]); setErrorMessage(null); }}
+                onPress={() => { setSelectedSeason(season.numero); setErrorMessage(null); }}
                 style={[styles.seasonChip, selected && styles.seasonSelected, unavailable && styles.disabled]}>
                 <Text style={styles.secondaryText}>{selected ? '✓ ' : ''}T{season.numero}</Text>
               </Pressable>;
             })}</View>
             {!seasonsLoading && !seasonsError && availableSeasons.length === 0
               && <Text style={styles.subtitle}>Todavía no hay temporadas regulares para marcar.</Text>}
-            {selectedSeasons.length === 0 && <Text style={styles.subtitle}>{existingReview
-              ? 'Para quitar todas, usá “Marcar como no vista” en tu perfil.' : 'Elegí al menos una temporada completa.'}</Text>}
+            {selectedSeason === null && <Text style={styles.subtitle}>Elegí una temporada completa.</Text>}
           </View>}
 
           <Text style={styles.question}>¿Cuántas estrellas le das?</Text>
@@ -231,7 +249,7 @@ export function ReviewComposer({
             <Switch accessibilityLabel="Mi reseña contiene spoilers" value={spoiler} onValueChange={setSpoiler} disabled={submitting} trackColor={{ true: '#a51a27', false: '#444' }} />
           </View>
           <Text style={styles.subtitle}>Puntuaciones y reseñas públicas en Comunidad. Tus guardadas siguen siendo privadas.</Text>
-          {existingReview?.hiddenByModeration && <Text style={styles.error}>Oculta por moderación. Editarla no vuelve a publicarla automáticamente.</Text>}
+          {activeReview?.hiddenByModeration && <Text style={styles.error}>Oculta por moderación. Editarla no vuelve a publicarla automáticamente.</Text>}
           {errorMessage ? <Text style={styles.error}>{errorMessage}</Text> : null}
 
           <View style={styles.actions}>
@@ -259,7 +277,7 @@ export function ReviewComposer({
               <Text style={styles.primaryText}>
                 {submitting
                   ? 'Guardando...'
-                  : existingReview ? 'Guardar cambios' : 'Publicar reseña'}
+                  : activeReview ? 'Guardar cambios' : 'Publicar reseña'}
               </Text>
             </Pressable>
           </View>

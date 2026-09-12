@@ -50,7 +50,7 @@ Elegir qué ver suele convertirse en una búsqueda interminable entre catálogos
 - Mantener la sesión iniciada de forma segura y cerrarla desde Perfil o Preferencias.
 - Elegir plataformas de streaming y géneros favoritos.
 - Recibir diez recomendaciones personalizadas por vez.
-- Buscar películas en todo el catálogo, sin limitarse a las preferencias, y registrarlas como vistas.
+- Buscar películas y series en todo el catálogo, sin limitarse a las preferencias, y registrarlas como vistas.
 - Explorar trailers en un feed vertical y utilizar los controles nativos de YouTube.
 - Consultar la puntuación pública de cada película en TMDB.
 - Ver en qué plataforma seleccionada está disponible cada recomendación.
