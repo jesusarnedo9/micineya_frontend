@@ -17,7 +17,7 @@ assert.equal(moduleExports.formatPlatforms(['Amazon Prime Video', 'Disney Plus']
 assert.equal(moduleExports.formatPlatforms(['Netflix', 'Netflix']), 'Netflix');
 assert.equal(moduleExports.formatPlatforms([]), null);
 
-const assets = ['popcorn-bucket-textured.png', 'popcorn-kernel.png', 'badge-thrones.png', 'badge-chemistry.png', 'badge-cycle.png'];
+const assets = ['popcorn-bucket-textured.png', 'popcorn-kernel.png', 'badge-thrones.png', 'badge-chemistry.png', 'badge-cycle.png', 'badge-peaky.png', 'badge-vikings.png'];
 for (const asset of assets) {
   const file = path.join(__dirname, '../assets/images/gamification', asset);
   assert.ok(fs.existsSync(file), `Falta ${asset}`);
@@ -25,7 +25,7 @@ for (const asset of assets) {
 }
 
 const room = fs.readFileSync(path.join(__dirname, '../src/components/profile/popcorn-room.tsx'), 'utf8');
-for (const code of ['SERIE_TRONOS', 'SERIE_QUIMICA', 'SERIE_CICLO']) assert.match(room, new RegExp(code));
+for (const code of ['SERIE_TRONOS', 'SERIE_QUIMICA', 'SERIE_CICLO', 'SERIE_PEAKY', 'SERIE_VIKINGOS']) assert.match(room, new RegExp(code));
 assert.doesNotMatch(room, /Una película o una temporada completa/);
 
 console.log('OK: plataformas compactas, recursos livianos y estante de insignias.');

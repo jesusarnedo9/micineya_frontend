@@ -17,6 +17,8 @@ const BADGES = [
   { code: 'SERIE_CICLO', title: 'Dark', image: require('../../../assets/images/gamification/badge-cycle.png') },
   { code: 'SERIE_JUSTICIA', title: 'Better Call Saul', image: require('../../../assets/images/gamification/badge-justice.png') },
   { code: 'SERIE_FAMILIA', title: 'Los Soprano', image: require('../../../assets/images/gamification/badge-family.png') },
+  { code: 'SERIE_PEAKY', title: 'Peaky Blinders', image: require('../../../assets/images/gamification/badge-peaky.png') },
+  { code: 'SERIE_VIKINGOS', title: 'Vikingos', image: require('../../../assets/images/gamification/badge-vikings.png') },
 ] as const;
 
 const SLOTS = [
