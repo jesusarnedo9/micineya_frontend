@@ -27,5 +27,31 @@ export async function saveSeenPopcorn(userId: number, count: number): Promise<vo
 
 export async function clearPopcornProgress(account: string): Promise<void> {
   const storageKey = key(account);
-  await write(storageKey, () => SecureStore.deleteItemAsync(storageKey));
+  const badgesKey = `${storageKey}_badges`;
+  seenBadges.delete(badgesKey);
+  await Promise.all([
+    write(storageKey, () => SecureStore.deleteItemAsync(storageKey)),
+    write(badgesKey, () => SecureStore.deleteItemAsync(badgesKey)),
+  ]);
+}
+
+const seenBadges = new Map<string, Set<string>>();
+export async function loadSeenBadges(userId: number): Promise<Set<string>> {
+  const storageKey = `${key(`account_${userId}`)}_badges`;
+  await pendingWrites.get(storageKey)?.catch(() => {});
+  if (seenBadges.has(storageKey)) return new Set(seenBadges.get(storageKey));
+  const raw = await SecureStore.getItemAsync(storageKey);
+  const parsed: unknown = raw ? JSON.parse(raw) : [];
+  const values = new Set<string>(Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === 'string') : []);
+  seenBadges.set(storageKey, values);
+  return new Set(values);
+}
+
+export async function rememberBadge(userId: number, badge: string): Promise<void> {
+  const storageKey = `${key(`account_${userId}`)}_badges`;
+  // Keep it seen during this session even if secure storage temporarily fails.
+  const values = seenBadges.get(storageKey) ?? new Set<string>();
+  values.add(badge);
+  seenBadges.set(storageKey, values);
+  await write(storageKey, () => SecureStore.setItemAsync(storageKey, JSON.stringify([...values])));
 }

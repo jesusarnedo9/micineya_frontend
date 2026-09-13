@@ -22,10 +22,11 @@ for (const bottom of [0, 16, 24, 48]) {
       if (id === 'expo-router') return { Tabs };
       if (id === 'react-native-safe-area-context') return { useSafeAreaInsets: () => ({ top: 24, bottom, left: 0, right: 0 }) };
       if (id === '../../context/app-experience') return { AppExperienceProvider: 'Provider' };
+      if (id === '../../context/app-feedback') return { AppFeedbackProvider: 'Feedback' };
       throw new Error(`Import no contemplado: ${id}`);
     },
   });
-  const tabs = exports.default().props.children;
+  const tabs = exports.default().props.children.props.children;
   const { tabBarStyle, tabBarLabelPosition } = tabs.props.screenOptions;
   assert.ok(tabBarStyle.paddingBottom >= bottom, `Reservar el borde inferior de ${bottom}`);
   assert.equal(tabBarStyle.height - tabBarStyle.paddingBottom, 58, 'Conservar el área útil de los botones');

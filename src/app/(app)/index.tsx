@@ -1,4 +1,6 @@
 import { MovieReelFeed } from '../../components/reels/movie-reel-feed';
+import { SwipeHint } from '../../components/reels/swipe-hint';
+import { useAppFeedback } from '../../context/app-feedback';
 import { useAppExperience } from '../../context/app-experience';
 import { Ionicons } from '@expo/vector-icons';
 import { type Href, useRouter } from 'expo-router';
@@ -11,13 +13,17 @@ import { mediaTypeOf, type MediaType } from '../../types/movie';
 
 export default function RecommendedScreen() {
   const router = useRouter();
+  const { dismissSwipeHint } = useAppFeedback();
   const [mediaType, setMediaType] = useState<MediaType>('movie');
   const {
     loadRecommendations, recommendationsVersion, renewRecommendations,
     undoDismissal, clearDismissalNotice, lastDismissed, recommendationsBusy,
   } = useAppExperience();
   const loader = useCallback(() => loadRecommendations(mediaType), [loadRecommendations, mediaType]);
-  const switchContentType = useCallback(() => setMediaType((current) => current === 'movie' ? 'tv' : 'movie'), []);
+  const switchContentType = useCallback(() => {
+    dismissSwipeHint();
+    setMediaType((current) => current === 'movie' ? 'tv' : 'movie');
+  }, [dismissSwipeHint]);
 
   const runAction = async (action: () => Promise<void>) => {
     try {
@@ -32,11 +38,12 @@ export default function RecommendedScreen() {
     <SafeAreaView edges={['top']} style={styles.screen}>
       <View style={styles.topBar}>
         <View style={styles.contentTabs}><ContentTypeTabs value={mediaType} onChange={setMediaType} /></View>
-        <Pressable accessibilityLabel="Buscar películas" accessibilityRole="button"
+        <Pressable accessibilityLabel="Buscar películas y series" accessibilityRole="button"
           onPress={() => router.push('/search' as Href)} style={({ pressed }) => [styles.searchButton, pressed && styles.pressed]}>
           <Ionicons color="#fff" name="search" size={22} />
         </Pressable>
       </View>
+      <SwipeHint />
       {lastDismissed && mediaTypeOf(lastDismissed) === mediaType ? (
         <View style={styles.notice}>
           <View style={styles.noticeCopy}>

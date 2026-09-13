@@ -21,7 +21,9 @@ import { AccountSettings } from '../../components/profile/account-settings';
 import { PreferencesPanel } from '../../components/profile/preferences-panel';
 import { ProfileAvatar } from '../../components/profile/profile-avatar';
 import { ProfilePhotoPicker } from '../../components/profile/profile-photo-picker';
-import { ProfilePopcornRoom } from '../../components/profile/popcorn-room';
+import { ProfilePopcornRoom, useProfilePopcornProgress } from '../../components/profile/popcorn-room';
+import { CinephileTitle } from '../../components/profile/cinephile-title';
+import { SavedSeriesProgress, useSavedSeriesProgress } from '../../components/profile/saved-series-progress';
 import { useAppExperience } from '../../context/app-experience';
 import { clearSession } from '../../auth/session';
 import { contentKey, mediaTypeOf, type Movie } from '../../types/movie';
@@ -179,6 +181,8 @@ export default function ProfileScreen() {
     photoUri,
   } = useAppExperience();
   const [section, setSection] = useState<ProfileSection>('watched');
+  const savedSeasons = useSavedSeriesProgress(favoriteMovies, section === 'saved');
+  const popcorn = useProfilePopcornProgress(reviews.map((r) => `${contentKey(r)}:${[...(r.seasonsWatched ?? [])].sort((a, b) => a - b).join('-')}`).sort().join(','));
   const [reviewMovie, setReviewMovie] = useState<Movie | null>(null);
   const [editingReview, setEditingReview] = useState<ProfileReview | null>(null);
   const [removingId, setRemovingId] = useState<string | null>(null);
@@ -282,6 +286,7 @@ export default function ProfileScreen() {
             <View style={styles.identityCopy}>
               <Text style={styles.welcome}>Tu cine personal</Text>
               <Text numberOfLines={1} style={styles.username}>{username}</Text>
+              <CinephileTitle title={popcorn.snapshot?.progress.tituloCinefilo} />
             </View>
             <View style={styles.profileMark}>
               <Ionicons color="#ff7b80" name="film" size={21} />
@@ -345,7 +350,12 @@ export default function ProfileScreen() {
           <Pressable
             accessibilityRole="tab"
             accessibilityState={{ selected: section === 'achievements' }}
-            onPress={() => setSection('achievements')}
+            onPress={() => {
+              if (section !== 'achievements') {
+                void popcorn.load();
+                setSection('achievements');
+              }
+            }}
             style={[styles.sectionButton, section === 'achievements' && styles.sectionButtonActive]}
           >
             <Ionicons color={section === 'achievements' ? '#fff' : '#80777a'} name="trophy-outline" size={18} />
@@ -354,7 +364,7 @@ export default function ProfileScreen() {
         </View>
 
         {section === 'achievements' ? (
-          <ProfilePopcornRoom reviewKey={reviews.map((r) => `${contentKey(r)}:${[...(r.seasonsWatched ?? [])].sort((a, b) => a - b).join('-')}`).sort().join(',')} />
+          <ProfilePopcornRoom state={popcorn} />
         ) : section === 'watched' ? (
           <View style={styles.sectionContent}>
             <View style={styles.sectionHeading}>
@@ -455,6 +465,8 @@ export default function ProfileScreen() {
                       </Pressable>
                       <ContentTypeBadge type={favorite.mediaType} />
                       <Text numberOfLines={2} style={styles.savedTitle}>{favorite.titulo}</Text>
+                      {mediaTypeOf(favorite) === 'tv' && <SavedSeriesProgress tmdbId={favorite.tmdbId}
+                        seasons={savedSeasons[favorite.tmdbId]} reviews={reviews} />}
                     </View>
                   );
                 })}

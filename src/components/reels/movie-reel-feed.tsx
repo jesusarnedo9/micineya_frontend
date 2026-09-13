@@ -17,6 +17,7 @@ import { fetchMoviePage } from '../../api/movies';
 import { ApiFailure, describeApiError } from '../../api/errors';
 import { clearSession } from '../../auth/session';
 import { useAppExperience } from '../../context/app-experience';
+import { useAppFeedback } from '../../context/app-feedback';
 import { contentKey, type Movie } from '../../types/movie';
 import { ReviewComposer } from '../reviews/review-composer';
 import { MovieReel } from './movie-reel';
@@ -51,6 +52,7 @@ export function MovieReelFeed({
   emptyMessage = 'Todavía no encontramos películas para mostrar.',
 }: MovieReelFeedProps) {
   const router = useRouter();
+  const { newsOpen, cuesReady } = useAppFeedback();
   const {
     favoriteIds,
     recordReview,
@@ -264,7 +266,7 @@ export function MovieReelFeed({
           removeClippedSubviews={Platform.OS === 'android'}
           renderItem={({ item, index }) => (
             <MovieReel
-              active={screenFocused && !recommendationsBusy && reviewMovie === null && index === activeIndex}
+              active={screenFocused && cuesReady && !newsOpen && !recommendationsBusy && reviewMovie === null && index === activeIndex}
               height={viewport.height}
               label={
                 maxItems

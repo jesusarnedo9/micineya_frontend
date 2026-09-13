@@ -19,6 +19,7 @@ function moduleFrom(file, imports = {}) {
 
 async function main() {
   const types = moduleFrom('src/types/movie.ts');
+  const profileTypes = moduleFrom('src/types/profile.ts', { './movie': types });
   const movie = { id: 123, title: 'Peli', overview: '', poster_path: null };
   const serie = { ...movie, title: 'Serie', mediaType: 'tv' };
   assert.equal(types.contentKey(movie), 'movie:123');
@@ -89,17 +90,22 @@ async function main() {
   };
   const fetched = [];
   const removed = [];
+  const notices = [];
+  let failSave = false;
   const provider = moduleFrom('src/context/app-experience.tsx', {
     react: hooks, 'react/jsx-runtime': { jsx: (type, props) => ({ type, props }) },
     'react-native': { AppState: { addEventListener: () => ({ remove() {} }) } },
     '../api/movies': { ...api,
+      saveFavorite: async (movie) => { if (failSave) throw new Error('Sin conexión'); return api.saveFavorite(movie); },
       fetchRecommendationBatch: async (type) => { fetched.push(type); return { movies: [type === 'tv' ? serie : movie, { ...movie, id: 456, mediaType: type }], notice: null }; },
       renewMovies: async (_, type) => ({ movies: [{ ...movie, id: 999, mediaType: type }], notice: null }),
     },
     '../auth/session': { getAccountStorageKey: async () => 'test', getProfileName: async () => 'Test' },
     '../api/profile': { fetchUserProfile: async () => ({}), fetchProfilePhoto: async () => null },
-    '../api/reviews': { deleteReview: async (id, type) => removed.push(`${type}:${id}`), fetchMyReviews: async () => [] },
+    '../api/reviews': { deleteReview: async (id, type, season) => removed.push(`${type}:${id}${season ? ':s' + season : ''}`), fetchMyReviews: async () => [] },
     '../profile/review-storage': storage, '../types/movie': types,
+    '../types/profile': profileTypes,
+    './app-feedback': { useAppFeedback: () => ({ showUndo: (message, undo) => notices.push({ message, undo }) }) },
   });
   const render = () => { cursor = 0; return provider.AppExperienceProvider({ children: null }).props.value; };
   let app = render();
@@ -120,7 +126,88 @@ async function main() {
   const series = await app.loadRecommendations('tv');
   assert.equal(movies[0].id, 123, 'Renovar TV no cambia el lote de películas');
   assert.equal(series[0].id, 999);
+
+  const another = { ...movie, id: 321 };
+  await app.toggleFavorite(another);
+  assert.ok(render().favoriteIds.has('movie:321'));
+  await notices.at(-1).undo();
+  assert.ok(!render().favoriteIds.has('movie:321'), 'Deshacer guardado');
+  await app.toggleFavorite(another);
+  await app.toggleFavorite(another);
+  await notices.at(-1).undo();
+  assert.ok(render().favoriteIds.has('movie:321'), 'Deshacer quitar de guardadas');
+  await app.recordReview({ ...review, tmdbId: 321 });
+  assert.ok(!render().favoriteIds.has('movie:321'));
+  const undoWatched = notices.at(-1).undo;
+  const deletionsBefore = removed.length;
+  failSave = true;
+  await assert.rejects(undoWatched, /Sin conexión/);
+  assert.ok(!render().reviewedIds.has('movie:321'));
+  failSave = false;
+  await undoWatched();
+  assert.equal(removed.length, deletionsBefore + 1, 'Reintentar restauración no vuelve a borrar');
+  assert.ok(render().favoriteIds.has('movie:321'), 'Deshacer vista restaura guardada');
+
+  await app.toggleFavorite(serie);
+  const firstSeason = { ...review, mediaType: 'tv', seasonNumber: 1, seasonsWatched: [1], seriesComplete: false };
+  await app.recordReview(firstSeason);
+  await app.recordReview({ ...firstSeason, seasonNumber: 2, seasonsWatched: [2], seriesComplete: true });
+  assert.ok(!render().favoriteIds.has('tv:123'));
+  await notices.at(-1).undo();
+  assert.equal(removed.at(-1), 'tv:123:s2', 'Borrar solo la temporada recién vista');
+  assert.ok(render().reviews.some((r) => profileTypes.profileReviewKey(r) === 'tv:123:s1'));
+  assert.ok(!render().reviews.some((r) => profileTypes.profileReviewKey(r) === 'tv:123:s2'));
+  assert.ok(render().favoriteIds.has('tv:123'));
+
+  await app.recordReview({ ...review, tmdbId: 777 });
+  const staleUndo = notices.at(-1).undo;
+  const noticeCount = notices.length;
+  await app.recordReview({ ...review, tmdbId: 777, comment: 'Editada' });
+  assert.equal(notices.length, noticeCount, 'No ofrecer borrado al editar reseña anterior');
+  await staleUndo();
+  assert.ok(render().reviews.some((r) => r.tmdbId === 777 && r.comment === 'Editada'), 'Un aviso viejo no borra una edición');
+
+  const badgeStorage = moduleFrom('src/profile/popcorn-storage.ts', { 'expo-secure-store': secure });
+  assert.equal((await badgeStorage.loadSeenBadges(1)).size, 0);
+  await Promise.all([badgeStorage.rememberBadge(1, 'SERIE_TRONOS'), badgeStorage.rememberBadge(1, 'SERIE_CICLO')]);
+  assert.equal((await badgeStorage.loadSeenBadges(1)).size, 2);
+  assert.equal((await badgeStorage.loadSeenBadges(2)).size, 0, 'Separar cuentas');
+  const reloadedBadges = moduleFrom('src/profile/popcorn-storage.ts', { 'expo-secure-store': secure });
+  assert.equal((await reloadedBadges.loadSeenBadges(1)).size, 2, 'Recordar al reiniciar');
+  await badgeStorage.clearPopcornProgress('account_1');
+  assert.equal((await badgeStorage.loadSeenBadges(1)).size, 0);
+
+  let seasonCalls = 0;
+  let failSeasons = false;
+  const seasonApi = moduleFrom('src/api/series.ts', { './client': { apiClient: {
+    get: async () => { seasonCalls++; if (failSeasons) throw new Error('Sin catálogo'); return { data: { temporadas: [{ numero: 1 }] } }; },
+  } } });
+  await Promise.all([seasonApi.fetchCachedSeasons(123), seasonApi.fetchCachedSeasons(123)]);
+  await seasonApi.fetchCachedSeasons(123);
+  assert.equal(seasonCalls, 1, 'Compartir consulta y caché de temporadas');
+  failSeasons = true;
+  await assert.rejects(() => seasonApi.fetchCachedSeasons(456));
+  failSeasons = false;
+  await seasonApi.fetchCachedSeasons(456);
+  assert.equal(seasonCalls, 3, 'No almacenar fallos del catálogo');
+
+  const jsx = (type, props) => ({ type, props });
+  const savedProgress = moduleFrom('src/components/profile/saved-series-progress.tsx', {
+    react: hooks, 'react/jsx-runtime': { jsx, jsxs: jsx },
+    '@react-navigation/native': { useIsFocused: () => true },
+    'react-native': { StyleSheet: { create: (styles) => styles }, Text: 'Text', View: 'View' },
+    '../../api/series': seasonApi, '../../types/movie': types,
+  });
+  const seasons = [1, 2, 3].map((numero) => ({ numero, cantidadEpisodios: 10, estreno: '2020-01-01' }));
+  seasons.push({ numero: 4, cantidadEpisodios: 10, estreno: '2099-01-01' });
+  const seasonReviews = [firstSeason, firstSeason, { ...review, tmdbId: 123, mediaType: 'movie' }];
+  const progress = savedProgress.SavedSeriesProgress({ tmdbId: 123, seasons, reviews: seasonReviews });
+  assert.equal(progress.props.children[0].props.children, '1 de 3 temporadas', 'No contar duplicados, películas ni futuras temporadas');
+  assert.equal(progress.props.children[1].props.accessibilityValue.now, 1);
+  const offlineProgress = savedProgress.SavedSeriesProgress({ tmdbId: 123, reviews: seasonReviews });
+  assert.equal(offlineProgress.props.children[0].props.children, '1 temporada vista');
+  assert.ok(!offlineProgress.props.children[1], 'Sin catálogo, no inventar porcentaje');
   await storage.clearProfileReviews('test');
-  console.log('OK: identidad, almacenamiento anterior, escrituras concurrentes, API tipada y lotes independientes.');
+  console.log('OK: series, lotes, deshacer guardadas/vistas/temporadas, reintentos, avisos obsoletos, insignias por cuenta y caché.');
 }
 main().catch((error) => { console.error(error); process.exitCode = 1; });

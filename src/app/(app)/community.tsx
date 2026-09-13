@@ -14,6 +14,7 @@ import { CommunityButton as Button, PersonRow, PostCard, s } from '../../compone
 import { ReportSheet } from '../../components/community/report-sheet';
 import { PopcornRoom } from '../../components/profile/popcorn-room';
 import { ProfileAvatar } from '../../components/profile/profile-avatar';
+import { CinephileTitle } from '../../components/profile/cinephile-title';
 
 type Screen = { type: 'feed' } | { type: 'search'; query: string } | { type: 'profile'; id: number } | { type: 'moderation' };
 type ReportTarget = { usuarioId: number; resenaId: number | null };
@@ -164,7 +165,13 @@ export default function CommunityScreen() {
           {screen.type === 'search' && people.map((p) => <PersonRow key={p.id} person={p} onPress={() => openProfile(p.id)} />)}
         </>}
         {ready && screen.type === 'profile' && person && <View style={s.card}>
-          <View style={s.row}><ProfileAvatar uri={person.foto} username={person.username} /><Text style={[s.movie, { flex: 1 }]}>@{person.username}</Text></View>
+          <View style={s.row}>
+            <ProfileAvatar uri={person.foto} username={person.username} />
+            <View style={{ flex: 1 }}>
+              <Text style={s.movie}>@{person.username}</Text>
+              <CinephileTitle title={progress?.tituloCinefilo} />
+            </View>
+          </View>
           <Text style={s.muted}>Películas vistas, puntuaciones y reseñas públicas.</Text>
           {person.id !== status.miId && <>
             <Button title={person.siguiendo ? 'Dejar de seguir' : 'Seguir'} secondary={person.siguiendo} disabled={disabled} onPress={() => void mutate(() => setFollowing(person.id, !person.siguiendo))} />

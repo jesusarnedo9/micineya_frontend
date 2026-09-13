@@ -3,12 +3,13 @@ import { Tabs } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppExperienceProvider } from '../../context/app-experience';
+import { AppFeedbackProvider } from '../../context/app-feedback';
 
 export default function AppLayout() {
   const insets = useSafeAreaInsets();
   const bottomSpace = Math.max(insets.bottom, 8);
   return (
-    <AppExperienceProvider>
+    <AppFeedbackProvider><AppExperienceProvider>
       <Tabs
       screenOptions={{
         headerShown: false,
@@ -69,6 +70,6 @@ export default function AppLayout() {
         }}
         />
       </Tabs>
-    </AppExperienceProvider>
+    </AppExperienceProvider></AppFeedbackProvider>
   );
 }

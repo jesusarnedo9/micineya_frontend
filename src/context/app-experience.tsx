@@ -10,6 +10,7 @@ import { deleteReview, fetchMyReviews } from '../api/reviews';
 import { deleteProfileReview, loadProfileReviews, saveProfileReview } from '../profile/review-storage';
 import { contentKey, mediaTypeOf, type MediaType, type Movie } from '../types/movie';
 import { profileReviewKey, type ProfileReview } from '../types/profile';
+import { useAppFeedback } from './app-feedback';
 
 interface AppExperienceValue {
   favoriteIds: ReadonlySet<string>;
@@ -41,6 +42,7 @@ const orderReviews = (reviews: ProfileReview[]) => [...reviews].sort((a, b) =>
 const AppExperienceContext = createContext<AppExperienceValue | null>(null);
 
 export function AppExperienceProvider({ children }: PropsWithChildren) {
+  const { showUndo } = useAppFeedback();
   const [favoriteIds, setFavoriteIds] = useState<Set<string>>(new Set());
   const [favoriteMovies, setFavoriteMovies] = useState<FavoriteMovie[]>([]);
   const [reviews, setReviews] = useState<ProfileReview[]>([]);
@@ -64,6 +66,24 @@ export function AppExperienceProvider({ children }: PropsWithChildren) {
   const batches = useRef<Record<MediaType, Batch>>({ movie: newBatch(), tv: newBatch() });
   const favoriteChanges = useRef(new Set<string>());
   const reviewChanges = useRef(new Set<string>());
+  const reviewsRef = useRef<ProfileReview[]>([]);
+  // An old toast must never revert a more recent change to the same content.
+  const contentRevisions = useRef(new Map<string, number>());
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
+  const touchContent = useCallback((key: string) => {
+    const revision = (contentRevisions.current.get(key) ?? 0) + 1;
+    contentRevisions.current.set(key, revision);
+    return revision;
+  }, []);
+  const updateReviews = useCallback((next: ProfileReview[]) => {
+    reviewsRef.current = orderReviews(next);
+    reviewedIdsRef.current = new Set(next.map(contentKey));
+    setReviews(reviewsRef.current);
+  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -90,12 +110,8 @@ export function AppExperienceProvider({ children }: PropsWithChildren) {
         const server = await fetchMyReviews().catch(() => null);
         const loaded = server ?? await loadProfileReviews(account).catch(() => []);
         if (mounted) {
-          setReviews((current) => {
-            const merged = orderReviews([...loaded.filter((r) => !reviewChanges.current.has(profileReviewKey(r))),
-              ...current.filter((r) => reviewChanges.current.has(profileReviewKey(r)))]);
-            reviewedIdsRef.current = new Set(merged.map(contentKey));
-            return merged;
-          });
+          updateReviews([...loaded.filter((r) => !reviewChanges.current.has(profileReviewKey(r))),
+            ...reviewsRef.current.filter((r) => reviewChanges.current.has(profileReviewKey(r)))]);
         }
       }).catch(() => console.warn('No se pudo cargar el historial'));
     return () => { mounted = false; };
@@ -202,31 +218,47 @@ export function AppExperienceProvider({ children }: PropsWithChildren) {
   }, [lastDismissed]);
   const clearDismissalNotice = useCallback(() => setLastDismissed(null), []);
 
-  const toggleFavorite = useCallback(async (movie: Movie) => {
+  const setFavoriteSaved = useCallback(async (movie: Movie, saved: boolean) => {
+    if (!mountedRef.current) throw new Error('La sesión cambió');
     const key = contentKey(movie);
-    const wasSaved = favoritesRef.current.some((f) => contentKey(f) === key);
-    if (favoriteMutations.current.has(key)) return wasSaved;
+    if (favoriteMutations.current.has(key)) throw new Error('La guardada se está actualizando');
     favoriteMutations.current.add(key);
     try {
-      if (wasSaved) await removeFavorite(movie.id, mediaTypeOf(movie));
-      else await saveFavorite(movie);
+      if (saved) await saveFavorite(movie);
+      else await removeFavorite(movie.id, mediaTypeOf(movie));
+      if (!mountedRef.current) throw new Error('La sesión cambió');
       favoriteChanges.current.add(key);
       const remaining = favoritesRef.current.filter((f) => contentKey(f) !== key);
-      const next = wasSaved ? remaining : [{
+      const next = !saved ? remaining : [{
         tmdbId: movie.id, mediaType: mediaTypeOf(movie), titulo: movie.title, posterPath: movie.poster_path,
       }, ...remaining];
       favoritesRef.current = next;
       setFavoriteMovies(next); setFavoriteIds(new Set(next.map(contentKey)));
-      return !wasSaved;
+      return touchContent(key);
     } finally { favoriteMutations.current.delete(key); }
-  }, []);
+  }, [touchContent]);
+
+  const toggleFavorite = useCallback(async (movie: Movie) => {
+    const key = contentKey(movie);
+    const wasSaved = favoritesRef.current.some((f) => contentKey(f) === key);
+    if (favoriteMutations.current.has(key)) return wasSaved;
+    const revision = await setFavoriteSaved(movie, !wasSaved);
+    showUndo(wasSaved ? 'Quitada de guardadas' : 'Agregada a guardadas', async () => {
+      if (!mountedRef.current || contentRevisions.current.get(key) !== revision) return;
+      await setFavoriteSaved(movie, wasSaved);
+    });
+    return !wasSaved;
+  }, [setFavoriteSaved, showUndo]);
 
   const recordReview = useCallback(async (review: ProfileReview) => {
+    if (!mountedRef.current) return;
     const key = contentKey(review);
     const itemKey = profileReviewKey(review);
+    const existed = reviewsRef.current.some((r) => profileReviewKey(r) === itemKey);
+    const wasSaved = favoritesRef.current.some((f) => contentKey(f) === key);
+    let revision = touchContent(key);
     reviewChanges.current.add(itemKey);
-    reviewedIdsRef.current = new Set(reviewedIdsRef.current).add(key);
-    setReviews((current) => orderReviews([review, ...current.filter((r) => profileReviewKey(r) !== itemKey)]));
+    updateReviews([review, ...reviewsRef.current.filter((r) => profileReviewKey(r) !== itemKey)]);
     const shouldLeaveSaved = mediaTypeOf(review) === 'tv' && !review.seriesComplete;
     const remainingFavorites = shouldLeaveSaved ? favoritesRef.current
       : favoritesRef.current.filter((favorite) => contentKey(favorite) !== key);
@@ -239,35 +271,58 @@ export function AppExperienceProvider({ children }: PropsWithChildren) {
     refreshIfExhausted(mediaTypeOf(review));
     try { await saveProfileReview(await getAccountStorageKey(), review); }
     catch { console.warn('No se pudo actualizar la copia local de la reseña'); }
-  }, [refreshIfExhausted]);
+    if (mountedRef.current && !existed && contentRevisions.current.get(key) === revision) {
+      let removed = false;
+      const type = mediaTypeOf(review);
+      const season = review.seasonNumber ?? review.seasonsWatched?.[0];
+      showUndo(type === 'tv' ? 'Temporada agregada a vistas' : 'Película agregada a vistas', async () => {
+        if (!mountedRef.current || contentRevisions.current.get(key) !== revision) return;
+        // Retry safely if the deletion succeeded but restoring the saved state failed.
+        if (!removed) {
+          await deleteReview(review.tmdbId, type, season);
+          if (!mountedRef.current) return;
+          removed = true;
+          reviewChanges.current.add(itemKey);
+          updateReviews(reviewsRef.current.filter((r) => profileReviewKey(r) !== itemKey));
+          revision = touchContent(key);
+          refreshRecommendations(type);
+          try { await deleteProfileReview(await getAccountStorageKey(), review.tmdbId, type, season); }
+          catch { console.warn('No se pudo actualizar la copia local del historial'); }
+        }
+        // Deleting a TV season automatically saves the series on the server.
+        if (wasSaved || type === 'tv') {
+          await setFavoriteSaved({ id: review.tmdbId, mediaType: type, title: review.title,
+            poster_path: review.posterPath, overview: '' }, wasSaved);
+        }
+      });
+    }
+  }, [refreshIfExhausted, refreshRecommendations, setFavoriteSaved, showUndo, touchContent, updateReviews]);
 
   const unmarkAsWatched = useCallback(async (tmdbId: number, type: MediaType = 'movie', seasonNumber?: number) => {
     await deleteReview(tmdbId, type, seasonNumber);
     const key = contentKey({ tmdbId, mediaType: type });
     const targetKey = profileReviewKey({ tmdbId, mediaType: type, seasonNumber });
+    touchContent(key);
     reviewChanges.current.add(targetKey);
-    setReviews((current) => {
-      current.filter((r) => contentKey(r) === key && (!seasonNumber || profileReviewKey(r) === targetKey))
-        .forEach((r) => reviewChanges.current.add(profileReviewKey(r)));
-      const remaining = current.filter((r) => seasonNumber
-        ? profileReviewKey(r) !== targetKey : contentKey(r) !== key);
-      const next = new Set(reviewedIdsRef.current);
-      if (!remaining.some((r) => contentKey(r) === key)) next.delete(key);
-      reviewedIdsRef.current = next;
-      return remaining;
-    });
+    reviewsRef.current.filter((r) => contentKey(r) === key && (!seasonNumber || profileReviewKey(r) === targetKey))
+      .forEach((r) => reviewChanges.current.add(profileReviewKey(r)));
+    const remaining = reviewsRef.current.filter((r) => seasonNumber
+      ? profileReviewKey(r) !== targetKey : contentKey(r) !== key);
+    updateReviews(remaining);
     try { await deleteProfileReview(await getAccountStorageKey(), tmdbId, type, seasonNumber); }
     catch { console.warn('No se pudo actualizar la copia local del historial'); }
     if (type === 'tv' && seasonNumber) {
       try {
-        const favorites = await fetchFavorites();
+        const fetched = await fetchFavorites();
+        const favorites = [...favoritesRef.current.filter((f) => contentKey(f) !== key),
+          ...fetched.filter((f) => contentKey(f) === key)];
         favoriteChanges.current.add(key);
         favoritesRef.current = favorites;
         setFavoriteMovies(favorites); setFavoriteIds(new Set(favorites.map(contentKey)));
       } catch { console.warn('No se pudieron actualizar las guardadas'); }
     }
     refreshRecommendations(type);
-  }, [refreshRecommendations]);
+  }, [refreshRecommendations, touchContent, updateReviews]);
 
   return <AppExperienceContext.Provider value={{
     favoriteIds, favoriteMovies, loadRecommendations, recordReview, recommendationsVersion, recommendationNotices,

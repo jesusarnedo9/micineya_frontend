@@ -7,6 +7,7 @@ import {
 import { fetchPopcornProgress, type PopcornProgress } from '../../api/progress';
 import { describeApiError } from '../../api/errors';
 import { loadSeenPopcorn, saveSeenPopcorn } from '../../profile/popcorn-storage';
+import { BadgeCelebration } from './badge-celebration';
 
 const BUCKET = require('../../../assets/images/gamification/popcorn-bucket-textured.png');
 const POPCORN = require('../../../assets/images/gamification/popcorn-kernel.png');
@@ -14,6 +15,8 @@ const BADGES = [
   { code: 'SERIE_TRONOS', title: 'Game of Thrones', image: require('../../../assets/images/gamification/badge-thrones.png') },
   { code: 'SERIE_QUIMICA', title: 'Breaking Bad', image: require('../../../assets/images/gamification/badge-chemistry.png') },
   { code: 'SERIE_CICLO', title: 'Dark', image: require('../../../assets/images/gamification/badge-cycle.png') },
+  { code: 'SERIE_JUSTICIA', title: 'Better Call Saul', image: require('../../../assets/images/gamification/badge-justice.png') },
+  { code: 'SERIE_FAMILIA', title: 'Los Soprano', image: require('../../../assets/images/gamification/badge-family.png') },
 ] as const;
 
 const SLOTS = [
@@ -50,22 +53,25 @@ function Bucket({ filled, falling, drop, pulse }: { filled: number; falling: num
 
 function BadgeShelf({ earned }: { earned: string[] }) {
   const unlocked = new Set(earned);
+  const badges = BADGES.filter((badge) => unlocked.has(badge.code));
+  if (badges.length === 0) return null;
+  const shelves = Array.from({ length: Math.ceil(badges.length / 3) }, (_, i) => badges.slice(i * 3, i * 3 + 3));
   return <View style={styles.badgeSection}>
     <Text style={styles.eyebrow}>INSIGNIAS</Text>
-    <View style={styles.badgeRow}>
-      {BADGES.map((badge) => {
-        const active = unlocked.has(badge.code);
-        return <View key={badge.code} accessible accessibilityLabel={`${badge.title}: ${active ? 'conseguida' : 'bloqueada'}`} style={styles.badgeSlot}>
-          <View style={styles.badgePedestal}>
-            <Image source={badge.image} style={[styles.badgeImage, !active && styles.badgeLocked]} />
-            {!active && <Ionicons name="lock-closed" color="#6f6663" size={17} style={styles.lock} />}
+    {shelves.map((shelf) => <View key={shelf[0].code}>
+      <View style={styles.badgeRow}>
+        {shelf.map((badge) => (
+          <View key={badge.code} accessible accessibilityLabel={`${badge.title}: conseguida`} style={styles.badgeSlot}>
+            <View style={styles.badgePedestal}>
+              <Image source={badge.image} style={styles.badgeImage} />
+            </View>
+            <Text style={styles.badgeTitle}>{badge.title}</Text>
           </View>
-          <Text numberOfLines={1} style={[styles.badgeTitle, !active && styles.badgeTitleLocked]}>{badge.title}</Text>
-        </View>;
-      })}
-    </View>
-    <View style={styles.shelfTop} />
-    <View style={styles.shelfFront} />
+        ))}
+      </View>
+      <View style={styles.shelfTop} />
+      <View style={styles.shelfFront} />
+    </View>)}
   </View>;
 }
 
@@ -143,7 +149,6 @@ export function PopcornRoom({ progress, from = progress.totalPochoclos ?? progre
       <Text style={styles.eyebrow}>SALÓN DE POCHOCLOS</Text>
     </View>
     <Text style={styles.heading}>{celebrating ? '¡Balde completo!' : `Balde ${completed + 1}`}</Text>
-    {progress.tituloCinefilo && <View style={styles.cinephileTitle}><Ionicons name="ribbon-outline" size={15} color="#f3cf83" /><Text style={styles.cinephileTitleText}>{progress.tituloCinefilo}</Text></View>}
     <Bucket filled={filled} falling={falling} drop={drop} pulse={pulse} />
     <View accessible accessibilityRole="progressbar" accessibilityLabel={`Balde ${completed + 1}`} accessibilityValue={{ min: 0, max: 10, now: filled }} style={styles.progressBlock}>
       <View style={styles.progressLabels}><Text style={styles.bucketLabel}>BALDE {completed + 1}</Text><Text style={styles.count}>{filled} / 10</Text></View>
@@ -156,12 +161,15 @@ export function PopcornRoom({ progress, from = progress.totalPochoclos ?? progre
       <Text style={styles.shelfTitle}>{completed} ×</Text>
     </View>
     <BadgeShelf earned={progress.insignias ?? []} />
+    {animate && reduced !== null && !running && shown === total && <BadgeCelebration
+      userId={progress.usuarioId} reduced={reduced}
+      badges={BADGES.filter((badge) => progress.insignias?.includes(badge.code))} />}
     {running && <Pressable accessibilityRole="button" onPress={() => setSkip(true)} style={styles.skip}><Text style={styles.skipText}>Ver el resultado sin animación</Text></Pressable>}
     {storageWarning && <Text style={styles.subtitle}>El progreso está guardado en tu cuenta. No pudimos recordar la animación en este teléfono.</Text>}
   </View>;
 }
 
-export function ProfilePopcornRoom({ reviewKey }: { reviewKey: string }) {
+export function useProfilePopcornProgress(reviewKey: string) {
   const [snapshot, setSnapshot] = useState<{ progress: PopcornProgress; from: number; revision: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -171,13 +179,16 @@ export function ProfilePopcornRoom({ reviewKey }: { reviewKey: string }) {
 
   const load = useCallback(async () => {
     const request = ++revision.current;
-    setLoading(true); setError(null); setSnapshot(null);
+    setLoading(true); setError(null);
     try {
       const progress = await fetchPopcornProgress();
       const from = await loadSeenPopcorn(progress.usuarioId).catch(() => 0);
       if (request === revision.current) setSnapshot({ progress, from, revision: request });
     } catch (failure) {
-      if (request === revision.current) setError(describeApiError(failure).message);
+      if (request === revision.current) {
+        setSnapshot(null);
+        setError(describeApiError(failure).message);
+      }
     } finally { if (request === revision.current) setLoading(false); }
   }, []);
 
@@ -191,8 +202,13 @@ export function ProfilePopcornRoom({ reviewKey }: { reviewKey: string }) {
     return () => { revision.current += 1; };
   }, [focused, foreground, reviewKey, load]);
 
+  return { snapshot, error, loading, focused, foreground, load };
+}
+
+export function ProfilePopcornRoom({ state }: { state: ReturnType<typeof useProfilePopcornProgress> }) {
+  const { snapshot, error, loading, focused, foreground, load } = state;
   return <View style={{ marginHorizontal: 18, marginTop: 18 }}>
-    {focused && foreground && snapshot ? <PopcornRoom key={snapshot.revision} progress={snapshot.progress} from={snapshot.from} animate /> : null}
+    {focused && foreground && !loading && snapshot ? <PopcornRoom key={snapshot.revision} progress={snapshot.progress} from={snapshot.from} animate /> : null}
     {loading && <View style={styles.room}><ActivityIndicator color="#e3c079" /><Text style={styles.subtitle}>Preparando tus pochoclos…</Text></View>}
     {error && <View style={styles.room}><Text style={styles.shelfTitle}>No pudimos cargar tus pochoclos</Text><Text style={styles.subtitle}>{error}</Text><Pressable accessibilityRole="button" onPress={() => void load()} style={styles.skip}><Text style={styles.skipText}>Reintentar</Text></Pressable></View>}
   </View>;
@@ -203,8 +219,6 @@ const styles = StyleSheet.create({
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   eyebrow: { color: '#d8b577', fontSize: 10, letterSpacing: 1.4, fontWeight: '900' },
   heading: { color: '#fff3db', fontSize: 23, fontWeight: '900', marginTop: 10 },
-  cinephileTitle: { alignItems: 'center', alignSelf: 'flex-start', backgroundColor: '#382818', borderColor: '#70522d', borderRadius: 18, borderWidth: 1, flexDirection: 'row', gap: 6, marginTop: 9, paddingHorizontal: 11, paddingVertical: 6 },
-  cinephileTitleText: { color: '#f3cf83', fontSize: 12, fontWeight: '900' },
   subtitle: { color: '#b6a99c', fontSize: 12, lineHeight: 19, marginTop: 7 },
   stage: { width: 220, height: 226, alignSelf: 'center', marginVertical: 2 },
   halo: { position: 'absolute', top: 34, left: 2, width: 216, height: 184, borderRadius: 108, backgroundColor: '#b78c2314' },
@@ -224,14 +238,11 @@ const styles = StyleSheet.create({
   miniBucket: { position: 'absolute', left: 1, top: 6, width: 28, height: 28 },
   miniKernel: { position: 'absolute', top: 2, width: 16, height: 16, zIndex: 2 },
   badgeSection: { marginTop: 20 },
-  badgeRow: { flexDirection: 'row', justifyContent: 'space-around', marginTop: 11, paddingHorizontal: 2 },
+  badgeRow: { flexDirection: 'row', justifyContent: 'flex-start', gap: '3%', marginTop: 11, paddingHorizontal: 2 },
   badgeSlot: { alignItems: 'center', width: '31%' },
   badgePedestal: { alignItems: 'center', height: 76, justifyContent: 'flex-end', width: 76 },
   badgeImage: { height: 72, width: 72 },
-  badgeLocked: { opacity: 0.16 },
-  lock: { position: 'absolute', bottom: 27 },
-  badgeTitle: { color: '#e7d3ad', fontSize: 9, fontWeight: '800', marginTop: 5, maxWidth: 94 },
-  badgeTitleLocked: { color: '#625b59' },
+  badgeTitle: { color: '#e7d3ad', fontSize: 10, fontWeight: '800', marginTop: 5, textAlign: 'center' },
   shelfTop: { backgroundColor: '#6e4431', borderRadius: 3, height: 7, marginTop: 7, shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.55, shadowRadius: 3 },
   shelfFront: { alignSelf: 'center', backgroundColor: '#3d251d', borderBottomLeftRadius: 4, borderBottomRightRadius: 4, height: 8, width: '94%' },
   skip: { alignItems: 'center', padding: 12, minHeight: 44, marginTop: 8 },
