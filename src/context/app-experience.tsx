@@ -260,9 +260,11 @@ export function AppExperienceProvider({ children }: PropsWithChildren) {
     reviewChanges.current.add(itemKey);
     updateReviews([review, ...reviewsRef.current.filter((r) => profileReviewKey(r) !== itemKey)]);
     const shouldLeaveSaved = mediaTypeOf(review) === 'tv' && !review.seriesComplete;
-    const remainingFavorites = shouldLeaveSaved ? favoritesRef.current
-      : favoritesRef.current.filter((favorite) => contentKey(favorite) !== key);
-    if (remainingFavorites.length !== favoritesRef.current.length) {
+    const otherFavorites = favoritesRef.current.filter((favorite) => contentKey(favorite) !== key);
+    const remainingFavorites = shouldLeaveSaved
+      ? [{ tmdbId: review.tmdbId, mediaType: mediaTypeOf(review), titulo: review.title, posterPath: review.posterPath }, ...otherFavorites]
+      : otherFavorites;
+    if (shouldLeaveSaved || remainingFavorites.length !== favoritesRef.current.length) {
       favoriteChanges.current.add(key);
       favoritesRef.current = remainingFavorites;
       setFavoriteMovies(remainingFavorites);
@@ -275,7 +277,7 @@ export function AppExperienceProvider({ children }: PropsWithChildren) {
       let removed = false;
       const type = mediaTypeOf(review);
       const season = review.seasonNumber ?? review.seasonsWatched?.[0];
-      showUndo(type === 'tv' ? 'Temporada agregada a vistas' : 'Película agregada a vistas', async () => {
+      showUndo(type === 'tv' ? 'Progreso de la serie actualizado' : 'Película agregada a vistas', async () => {
         if (!mountedRef.current || contentRevisions.current.get(key) !== revision) return;
         // Retry safely if the deletion succeeded but restoring the saved state failed.
         if (!removed) {

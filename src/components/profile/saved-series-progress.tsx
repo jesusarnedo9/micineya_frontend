@@ -4,7 +4,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import { fetchCachedSeasons, type Season } from '../../api/series';
 import { type FavoriteMovie } from '../../api/movies';
 import { mediaTypeOf } from '../../types/movie';
-import { type ProfileReview } from '../../types/profile';
+import { watchedSeasonNumbers, type ProfileReview } from '../../types/profile';
 
 export function useSavedSeriesProgress(favorites: FavoriteMovie[], enabled: boolean) {
   const focused = useIsFocused();
@@ -34,7 +34,7 @@ export function SavedSeriesProgress({ tmdbId, seasons, reviews }: {
   tmdbId: number; seasons?: Season[]; reviews: ProfileReview[];
 }) {
   const watched = new Set(reviews.filter((r) => mediaTypeOf(r) === 'tv' && r.tmdbId === tmdbId)
-    .flatMap((r) => r.seasonNumber ? [r.seasonNumber] : r.seasonsWatched ?? []));
+    .flatMap(watchedSeasonNumbers));
   const today = new Date().toISOString().slice(0, 10);
   const available = seasons?.filter((s) => s.numero > 0 && s.cantidadEpisodios !== 0 && s.estreno && s.estreno <= today);
   const total = seasons ? new Set([...(available ?? []).map((s) => s.numero), ...watched]).size : null;

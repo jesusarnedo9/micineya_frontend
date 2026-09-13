@@ -196,7 +196,7 @@ async function main() {
     react: hooks, 'react/jsx-runtime': { jsx, jsxs: jsx },
     '@react-navigation/native': { useIsFocused: () => true },
     'react-native': { StyleSheet: { create: (styles) => styles }, Text: 'Text', View: 'View' },
-    '../../api/series': seasonApi, '../../types/movie': types,
+    '../../api/series': seasonApi, '../../types/movie': types, '../../types/profile': profileTypes,
   });
   const seasons = [1, 2, 3].map((numero) => ({ numero, cantidadEpisodios: 10, estreno: '2020-01-01' }));
   seasons.push({ numero: 4, cantidadEpisodios: 10, estreno: '2099-01-01' });
@@ -207,6 +207,22 @@ async function main() {
   const offlineProgress = savedProgress.SavedSeriesProgress({ tmdbId: 123, reviews: seasonReviews });
   assert.equal(offlineProgress.props.children[0].props.children, '1 temporada vista');
   assert.ok(!offlineProgress.props.children[1], 'Sin catálogo, no inventar porcentaje');
+
+  const thirteen = Array.from({ length: 13 }, (_, i) => ({ numero: i + 1, cantidadEpisodios: 10, estreno: '2020-01-01' }));
+  const tenth = { ...firstSeason, seasonNumber: 10, seasonsWatched: [10] };
+  const advanced = savedProgress.SavedSeriesProgress({ tmdbId: 123, seasons: thirteen, reviews: [firstSeason, tenth] });
+  assert.equal(advanced.props.children[0].props.children, '10 de 13 temporadas');
+  assert.equal(advanced.props.children[1].props.accessibilityValue.now, 10);
+  const complete = savedProgress.SavedSeriesProgress({ tmdbId: 123, seasons: thirteen.slice(0, 6),
+    reviews: [{ ...firstSeason, seasonNumber: 6, seasonsWatched: [1, 2, 3, 4, 5, 6] }] });
+  assert.equal(complete.props.children[1].props.children.props.style[1].width, '100%');
+  const seriesReview = { ...tenth, tmdbId: 2026 };
+  await app.recordReview(seriesReview);
+  assert.ok(render().favoriteIds.has('tv:2026'), 'Reseñar una serie en curso la guarda automáticamente');
+  assert.equal(render().reviews.filter((r) => r.tmdbId === 2026).length, 1, 'No inventar reseñas anteriores');
+  await notices.at(-1).undo();
+  assert.ok(!render().favoriteIds.has('tv:2026'), 'Deshacer restaura también el guardado automático');
+  assert.ok(!render().reviews.some((r) => r.tmdbId === 2026));
   await storage.clearProfileReviews('test');
   console.log('OK: series, lotes, deshacer guardadas/vistas/temporadas, reintentos, avisos obsoletos, insignias por cuenta y caché.');
 }

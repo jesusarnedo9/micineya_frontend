@@ -21,7 +21,7 @@ import { submitReview } from '../../api/reviews';
 import { ensureCommunityParticipation } from '../community/community-rules';
 import { mediaTypeOf, type Movie } from '../../types/movie';
 import { fetchSeasons, type Season } from '../../api/series';
-import type { ProfileReview } from '../../types/profile';
+import { watchedSeasonNumbers, type ProfileReview } from '../../types/profile';
 
 interface ReviewComposerProps {
   movie: Movie | null;
@@ -90,8 +90,8 @@ export function ReviewComposer({
     return () => { active = false; };
   }, [movie?.id, isSeries, seasonsAttempt]);
 
-  const reviewedSeasons = existingReviews.flatMap((review) => review.seasonsWatched ?? (review.seasonNumber ? [review.seasonNumber] : []));
-  if (existingReview) reviewedSeasons.push(...(existingReview.seasonsWatched ?? (existingReview.seasonNumber ? [existingReview.seasonNumber] : [])));
+  const reviewedSeasons = existingReviews.flatMap(watchedSeasonNumbers);
+  if (existingReview) reviewedSeasons.push(...watchedSeasonNumbers(existingReview));
   const availableSeasons = Array.from(new Map([...seasons, ...reviewedSeasons
     .filter((n) => !seasons.some((s) => s.numero === n))
     .map((n) => ({ numero: n, nombre: `Temporada ${n}`, cantidadEpisodios: null, estreno: null }))]

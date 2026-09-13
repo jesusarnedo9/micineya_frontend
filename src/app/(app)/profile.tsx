@@ -159,7 +159,7 @@ function WatchedCard({
           <Ionicons color="#b99ca1" name="arrow-undo-outline" size={15} />
         )}
         <Text style={styles.unmarkText}>
-          {unmarking ? 'Quitando...' : 'Marcar como no vista'}
+          {unmarking ? 'Quitando...' : mediaTypeOf(review) === 'tv' ? 'Quitar reseña' : 'Marcar como no vista'}
         </Text>
       </Pressable>
     </View>
@@ -249,13 +249,15 @@ export default function ProfileScreen() {
   };
 
   const confirmUnmark = (review: ProfileReview) => {
+    const isSeries = mediaTypeOf(review) === 'tv';
+    const action = isSeries ? 'Quitar reseña' : 'Marcar como no vista';
     Alert.alert(
-      'Marcar como no vista',
-      `Se eliminarán tu puntuación y reseña de “${review.title}”${review.seasonNumber ? ` · Temporada ${review.seasonNumber}` : ''}.`,
+      action,
+      `Se eliminarán tu puntuación y reseña de “${review.title}”${review.seasonNumber ? ` · Temporada ${review.seasonNumber}` : ''}.${isSeries ? ' El progreso se ajustará a la temporada más avanzada que conserves.' : ''}`,
       [
         { text: 'Cancelar', style: 'cancel' },
         {
-          text: 'Marcar como no vista',
+          text: action,
           style: 'destructive',
           onPress: () => {
             setUnmarkingId(profileReviewKey(review));

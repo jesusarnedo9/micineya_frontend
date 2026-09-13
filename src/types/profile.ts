@@ -22,6 +22,15 @@ export function profileReviewKey(review: Pick<ProfileReview, 'tmdbId' | 'mediaTy
   return `${mediaTypeOf(review)}:${review.tmdbId}${season ? `:s${season}` : ''}`;
 }
 
+/** Ver una temporada implica haber visto las anteriores, no haberlas puntuado. */
+export function watchedSeasonNumbers(review: Pick<ProfileReview, 'mediaType' | 'seasonNumber' | 'seasonsWatched'>): number[] {
+  if (mediaTypeOf(review) !== 'tv') return [];
+  const numbers = [review.seasonNumber ?? 0, ...(review.seasonsWatched ?? [])]
+    .filter((n) => Number.isSafeInteger(n) && n > 0);
+  const last = Math.max(0, ...numbers);
+  return Array.from({ length: last }, (_, index) => index + 1);
+}
+
 export function createProfileReview(
   movie: Movie,
   rating: number,
